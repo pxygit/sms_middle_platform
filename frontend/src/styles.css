@@ -421,6 +421,23 @@ input {
   overflow-wrap: anywhere;
 }
 
+.card-code-column {
+  min-width: 330px;
+}
+
+.card-code-cell {
+  width: 300px;
+  justify-content: center;
+}
+
+.card-code-text {
+  display: inline-block;
+  min-width: 230px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: left;
+  white-space: nowrap;
+}
+
 .admin-stat-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

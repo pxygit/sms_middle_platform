@@ -25,6 +25,7 @@ import {
   Copy,
   Database,
   Eye,
+  EyeOff,
   Home,
   KeyRound,
   LockKeyhole,
@@ -43,6 +44,8 @@ import {
   createCardBatch,
   createServiceConfig,
   deleteServiceConfig,
+  deleteCardBatch,
+  deleteCardCode,
   downloadCardBatch,
   getProviderPrice,
   getProviderStock,
@@ -377,6 +380,10 @@ function BatchesPage() {
       void qc.invalidateQueries({ queryKey: ['card-batches'] });
     },
   });
+  const deleteMutation = useMutation({
+    mutationFn: deleteCardBatch,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['card-batches'] }),
+  });
 
   return (
     <div className="admin-page">
@@ -400,9 +407,19 @@ function BatchesPage() {
           centerColumn({
             title: t('actions'),
             render: (_: unknown, row: any) => (
-              <Button shape="round" onClick={() => void downloadCardBatch(row.id)}>
-                {t('exportTxt')}
-              </Button>
+              <Space>
+                <Button shape="round" onClick={() => void downloadCardBatch(row.id)}>
+                  {t('exportTxt')}
+                </Button>
+                <Popconfirm
+                  title={t('confirmDelete')}
+                  description={t('deleteBatchDanger')}
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => deleteMutation.mutate(row.id)}
+                >
+                  <Button shape="round" danger>{t('delete')}</Button>
+                </Popconfirm>
+              </Space>
             ),
           }),
         ]}
@@ -446,6 +463,13 @@ function CardsPage() {
       void qc.invalidateQueries({ queryKey: ['card-codes'] });
     },
   });
+  const deleteMutation = useMutation({
+    mutationFn: deleteCardCode,
+    onSuccess: () => {
+      msg.success(t('delete'));
+      void qc.invalidateQueries({ queryKey: ['card-codes'] });
+    },
+  });
   return (
     <div className="admin-page">
       {contextHolder}
@@ -461,6 +485,8 @@ function CardsPage() {
           centerColumn({
             title: t('cardCode'),
             dataIndex: 'codeMask',
+            width: 330,
+            className: 'card-code-column',
             render: (value: string, row: any) => <RevealableCardCode id={row.id} masked={value} />,
           }),
           centerColumn({ title: t('serviceKey'), width: 260, render: (_: unknown, row: any) => row.serviceConfig?.targetPlatform || '-' }),
@@ -471,12 +497,17 @@ function CardsPage() {
           centerColumn({
             title: t('actions'),
             render: (_: unknown, row: any) => (
-              <Select
-                value={row.status}
-                style={{ width: 120 }}
-                onChange={(status) => mutation.mutate({ id: row.id, status })}
-                options={['enabled', 'disabled', 'voided'].map((item) => ({ label: t(item), value: item }))}
-              />
+              <Space>
+                <Button size="small" shape="round" disabled={row.status === 'enabled'} onClick={() => mutation.mutate({ id: row.id, status: 'enabled' })}>
+                  {t('enabled')}
+                </Button>
+                <Button size="small" shape="round" disabled={row.status === 'disabled'} onClick={() => mutation.mutate({ id: row.id, status: 'disabled' })}>
+                  {t('disabled')}
+                </Button>
+                <Popconfirm title={t('confirmDelete')} okButtonProps={{ danger: true }} onConfirm={() => deleteMutation.mutate(row.id)}>
+                  <Button size="small" shape="round" danger>{t('delete')}</Button>
+                </Popconfirm>
+              </Space>
             ),
           }),
         ]}
@@ -613,10 +644,16 @@ function RevealableCardCode({ id, masked }: { id: number; masked: string }) {
   };
   const value = visible && plain ? plain : masked;
   return (
-    <Space>
+    <Space className="card-code-cell">
       {contextHolder}
-      <span>{value}</span>
-      <Button size="small" type="text" shape="circle" icon={<Eye size={15} />} onClick={() => (plain ? setVisible((next) => !next) : void reveal())} />
+      <span className="card-code-text">{value}</span>
+      <Button
+        size="small"
+        type="text"
+        shape="circle"
+        icon={visible ? <Eye size={15} /> : <EyeOff size={15} />}
+        onClick={() => (plain ? setVisible((next) => !next) : void reveal())}
+      />
       <Button
         size="small"
         type="text"

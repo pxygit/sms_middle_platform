@@ -82,6 +82,10 @@ export async function downloadCardBatch(id: number) {
   URL.revokeObjectURL(url);
 }
 
+export function deleteCardBatch(id: number) {
+  return unwrap<{ deleted: boolean }>(api.delete(`/admin/card-batches/${id}`));
+}
+
 export function listCardCodes() {
   return unwrap<CardCode[]>(api.get('/admin/card-codes'));
 }
@@ -92,6 +96,10 @@ export function updateCardStatus(id: number, status: string) {
 
 export function revealCardCode(id: number) {
   return unwrap<{ code: string }>(api.get(`/admin/card-codes/${id}/reveal`));
+}
+
+export function deleteCardCode(id: number) {
+  return unwrap<{ deleted: boolean }>(api.delete(`/admin/card-codes/${id}`));
 }
 
 export function listOrders() {

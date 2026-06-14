@@ -136,6 +136,19 @@ func (s *CardService) UpdateStatus(id uint, status string) error {
 	return s.db.Model(&model.CardCode{}).Where("id = ?", id).Update("status", status).Error
 }
 
+func (s *CardService) DeleteCard(id uint) error {
+	var activeCount int64
+	if err := s.db.Model(&model.ReceiveOrder{}).
+		Where("card_code_id = ? AND status IN ?", id, []string{model.OrderCreated, model.OrderActive, model.OrderCancelRequested}).
+		Count(&activeCount).Error; err != nil {
+		return err
+	}
+	if activeCount > 0 {
+		return errors.New("card has unfinished orders")
+	}
+	return s.db.Delete(&model.CardCode{}, id).Error
+}
+
 func (s *CardService) RevealCode(id uint) (string, error) {
 	var card model.CardCode
 	if err := s.db.First(&card, id).Error; err != nil {
@@ -167,6 +180,25 @@ func (s *CardService) ListBatches(limit, offset int) ([]model.CardBatch, error) 
 	var batches []model.CardBatch
 	err := s.db.Order("id desc").Limit(limit).Offset(offset).Find(&batches).Error
 	return batches, err
+}
+
+func (s *CardService) DeleteBatch(id uint) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var activeCount int64
+		if err := tx.Model(&model.ReceiveOrder{}).
+			Joins("JOIN sys_card_codes ON sys_card_codes.id = sys_receive_orders.card_code_id").
+			Where("sys_card_codes.batch_id = ? AND sys_receive_orders.status IN ?", id, []string{model.OrderCreated, model.OrderActive, model.OrderCancelRequested}).
+			Count(&activeCount).Error; err != nil {
+			return err
+		}
+		if activeCount > 0 {
+			return errors.New("batch has unfinished orders")
+		}
+		if err := tx.Where("batch_id = ?", id).Delete(&model.CardCode{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.CardBatch{}, id).Error
+	})
 }
 
 func (s *CardService) findUsableCard(code string) (*model.CardCode, error) {

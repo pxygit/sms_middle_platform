@@ -61,6 +61,20 @@ func (h *CardHandler) ExportBatch(c *gin.Context) {
 	c.String(http.StatusOK, content)
 }
 
+func (h *CardHandler) DeleteBatch(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid id")
+		return
+	}
+	if err := h.cards.DeleteBatch(uint(id)); err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	h.audit.Record("admin", adminID(c), "card_batch.delete", "card_batch", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	response.OK(c, gin.H{"deleted": true})
+}
+
 func (h *CardHandler) ListCards(c *gin.Context) {
 	cards, err := h.cards.ListCards(limit(c), offset(c))
 	if err != nil {
@@ -89,6 +103,20 @@ func (h *CardHandler) UpdateStatus(c *gin.Context) {
 	}
 	h.audit.Record("admin", adminID(c), "card.update_status", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), req)
 	response.OK(c, gin.H{"id": id, "status": req.Status})
+}
+
+func (h *CardHandler) DeleteCard(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid id")
+		return
+	}
+	if err := h.cards.DeleteCard(uint(id)); err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	h.audit.Record("admin", adminID(c), "card.delete", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	response.OK(c, gin.H{"deleted": true})
 }
 
 func (h *CardHandler) RevealCode(c *gin.Context) {
