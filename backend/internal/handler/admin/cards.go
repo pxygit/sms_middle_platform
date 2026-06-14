@@ -90,3 +90,18 @@ func (h *CardHandler) UpdateStatus(c *gin.Context) {
 	h.audit.Record("admin", adminID(c), "card.update_status", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), req)
 	response.OK(c, gin.H{"id": id, "status": req.Status})
 }
+
+func (h *CardHandler) RevealCode(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid id")
+		return
+	}
+	code, err := h.cards.RevealCode(uint(id))
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	h.audit.Record("admin", adminID(c), "card.reveal_code", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	response.OK(c, gin.H{"code": code})
+}

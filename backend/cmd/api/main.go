@@ -36,7 +36,7 @@ func main() {
 	audit := service.NewAuditService(db)
 	catalog := service.NewCatalogService(db)
 	meta := service.NewProviderMetadataService(registry)
-	cards := service.NewCardService(db, cfg.CardExportDir)
+	cards := service.NewCardService(db, cfg.CardExportDir, cfg.DataEncryptionKey)
 	orders := service.NewOrderService(db, registry)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

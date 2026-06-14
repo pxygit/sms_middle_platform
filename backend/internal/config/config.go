@@ -13,6 +13,7 @@ type Config struct {
 	HTTPAddr             string
 	DatabaseDSN          string
 	JWTSecret            string
+	DataEncryptionKey    string
 	JWTExpireHours       int
 	AdminDefaultUsername string
 	AdminDefaultPassword string
@@ -32,6 +33,7 @@ func Load() Config {
 		HTTPAddr:             getEnv("HTTP_ADDR", ":8080"),
 		DatabaseDSN:          getEnv("DATABASE_DSN", "host=127.0.0.1 user=postgres password=postgres dbname=sms_middle_platform port=5432 sslmode=disable TimeZone=Asia/Shanghai"),
 		JWTSecret:            getEnv("JWT_SECRET", "change-me"),
+		DataEncryptionKey:    getEnv("DATA_ENCRYPTION_KEY", getEnv("JWT_SECRET", "change-me")),
 		JWTExpireHours:       getEnvInt("JWT_EXPIRE_HOURS", 24),
 		AdminDefaultUsername: getEnv("ADMIN_DEFAULT_USERNAME", "admin"),
 		AdminDefaultPassword: getEnv("ADMIN_DEFAULT_PASSWORD", "admin123456"),

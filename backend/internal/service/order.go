@@ -90,14 +90,16 @@ func (s *OrderService) Create(ctx context.Context, cardCode string) (*model.Rece
 			return err
 		}
 		return tx.Model(&order).Updates(map[string]interface{}{
-			"supplier_order_id": result.SupplierOrderID,
-			"supplier_token":    result.SupplierToken,
-			"phone_number":      result.PhoneNumber,
-			"cost":              result.Cost,
-			"status":            model.OrderActive,
-			"supplier_status":   "active",
-			"raw_response":      []byte(result.Raw),
-			"started_at":        now,
+			"supplier_order_id":     result.SupplierOrderID,
+			"supplier_token":        result.SupplierToken,
+			"phone_number":          result.PhoneNumber,
+			"phone_country_code":    result.PhoneCountryCode,
+			"phone_national_number": result.PhoneNationalNumber,
+			"cost":                  result.Cost,
+			"status":                model.OrderActive,
+			"supplier_status":       "active",
+			"raw_response":          []byte(result.Raw),
+			"started_at":            now,
 		}).Error
 	})
 	if err != nil {
@@ -155,6 +157,9 @@ func (s *OrderService) Cancel(ctx context.Context, orderID uint) (*model.Receive
 	}
 	if order.Status != model.OrderActive {
 		return nil, errors.New("order cannot be cancelled in current status")
+	}
+	if order.StartedAt == nil || time.Since(*order.StartedAt) < 2*time.Minute {
+		return nil, errors.New("cancel is allowed after two minutes if no sms has been received")
 	}
 
 	if err := s.db.Model(&order).Update("status", model.OrderCancelRequested).Error; err != nil {

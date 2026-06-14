@@ -126,6 +126,7 @@ func (c *Client) GetPrice(ctx context.Context, input sms.ProviderPriceInput) (*s
 	}
 	return &sms.ProviderPrice{
 		Pool:        out.Pool,
+		LowPrice:    out.Price,
 		HighPrice:   out.HighPrice,
 		Price:       out.Price,
 		SuccessRate: out.SuccessRate,
@@ -232,15 +233,17 @@ func (c *Client) RequestNumber(ctx context.Context, input sms.RequestNumberInput
 		phone = "+" + out.CC + out.PhoneNumber
 	}
 	return &sms.RequestNumberResult{
-		SupplierOrderID: out.OrderID,
-		SupplierToken:   out.Token,
-		PhoneNumber:     phone,
-		Country:         out.Country,
-		Service:         out.Service,
-		Cost:            cost,
-		ExpiresIn:       out.ExpiresIn,
-		Expiration:      out.Expiration,
-		Raw:             raw,
+		SupplierOrderID:     out.OrderID,
+		SupplierToken:       out.Token,
+		PhoneNumber:         phone,
+		PhoneCountryCode:    out.CC,
+		PhoneNationalNumber: out.PhoneNumber,
+		Country:             out.Country,
+		Service:             out.Service,
+		Cost:                cost,
+		ExpiresIn:           out.ExpiresIn,
+		Expiration:          out.Expiration,
+		Raw:                 raw,
 	}, nil
 }
 

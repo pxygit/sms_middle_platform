@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   DatePicker,
+  Popconfirm,
   Form,
   Input,
   InputNumber,
@@ -21,13 +22,16 @@ import {
 import {
   Boxes,
   ClipboardList,
+  Copy,
   Database,
+  Eye,
   Home,
   KeyRound,
   LockKeyhole,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  RefreshCw,
   ScrollText,
   Settings2,
   Sparkles,
@@ -38,6 +42,7 @@ import {
   changePassword,
   createCardBatch,
   createServiceConfig,
+  deleteServiceConfig,
   downloadCardBatch,
   getProviderPrice,
   getProviderStock,
@@ -49,11 +54,14 @@ import {
   listProviderServices,
   listProviders,
   listServiceConfigs,
+  revealCardCode,
+  updateServiceConfig,
   updateCardStatus,
 } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { formatDateTime } from '../../utils/format';
 import type { ProviderCountry, ProviderService } from '../../types/api';
+import { statusColor } from '../../utils/status';
 
 const { Header, Sider, Content } = Layout;
 
@@ -163,6 +171,7 @@ function Stat({ title, value }: { title: string; value: number }) {
 function ServicesPage() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const providerCode = Form.useWatch('providerCode', form) || 'smspool';
@@ -188,13 +197,31 @@ function ServicesPage() {
     }),
   });
   const mutation = useMutation({
-    mutationFn: createServiceConfig,
+    mutationFn: (values: any) => editing ? updateServiceConfig(editing.id, values) : createServiceConfig(values),
     onSuccess: () => {
       form.resetFields();
+      setEditing(null);
       setOpen(false);
       void qc.invalidateQueries({ queryKey: ['service-configs'] });
     },
   });
+  const deleteMutation = useMutation({
+    mutationFn: deleteServiceConfig,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['service-configs'] }),
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue({ providerCode: 'smspool', timeoutSeconds: 1200, status: 'enabled' });
+    setOpen(true);
+  };
+
+  const openEdit = (record: any) => {
+    setEditing(record);
+    form.setFieldsValue(record);
+    setOpen(true);
+  };
 
   const onCountryChange = (value: string) => {
     const selected = countries.data?.find((item) => String(item.id) === value);
@@ -203,40 +230,54 @@ function ServicesPage() {
       countryCode: selected?.shortName || '',
       countryName: selected?.name || '',
       providerServiceId: undefined,
-      displayName: undefined,
       targetPlatform: undefined,
     });
   };
 
   const onServiceChange = (value: string) => {
     const selected = services.data?.find((item) => String(item.id) === value);
+    const country = countries.data?.find((item) => String(item.id) === countryId);
     form.setFieldsValue({
       providerServiceId: value,
       displayName: selected?.name || '',
-      targetPlatform: toPlatformKey(selected?.name || ''),
+      targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || '', selected?.name || ''),
     });
   };
 
   return (
     <div className="admin-page">
-      <PageHead title={t('serviceConfigs')} onCreate={() => setOpen(true)} />
+      <PageHead title={t('serviceConfigs')} onCreate={openCreate} onRefresh={() => query.refetch()} />
       <Table
+        className="center-table"
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={query.data || []}
         loading={query.isLoading}
         columns={[
-          { title: t('id'), dataIndex: 'id', width: 76 },
-          { title: t('displayName'), dataIndex: 'displayName' },
-          { title: t('provider'), dataIndex: 'providerCode' },
-          { title: t('platform'), dataIndex: 'targetPlatform' },
-          { title: t('country'), render: (_, row: any) => row.countryName || row.countryCode },
-          { title: t('providerServiceId'), dataIndex: 'providerServiceId' },
-          { title: t('maxPrice'), dataIndex: 'maxPrice' },
-          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
-          { title: t('status'), dataIndex: 'status', render: (value) => <Tag>{t(value)}</Tag> },
+          centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
+          centerColumn({ title: t('serviceKey'), dataIndex: 'targetPlatform', width: 260, className: 'wide-key-column' }),
+          centerColumn({ title: t('provider'), dataIndex: 'providerCode' }),
+          centerColumn({ title: t('country'), render: (_: unknown, row: any) => row.countryName || row.countryCode }),
+          centerColumn({ title: t('service'), dataIndex: 'displayName' }),
+          centerColumn({ title: t('providerServiceId'), dataIndex: 'providerServiceId' }),
+          centerColumn({ title: t('maxPrice'), dataIndex: 'maxPrice' }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
+          centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
+          centerColumn({
+            title: t('actions'),
+            width: 160,
+            render: (_: unknown, row: any) => (
+              <Space>
+                <Button size="small" shape="round" onClick={() => openEdit(row)}>{t('edit')}</Button>
+                <Popconfirm title={t('confirmDelete')} onConfirm={() => deleteMutation.mutate(row.id)}>
+                  <Button size="small" shape="round" danger>{t('delete')}</Button>
+                </Popconfirm>
+              </Space>
+            ),
+          }),
         ]}
       />
-      <Modal title={t('create')} open={open} footer={null} onCancel={() => setOpen(false)} width={720}>
+      <Modal title={editing ? t('save') : t('create')} open={open} footer={null} onCancel={() => setOpen(false)} width={720}>
         <Alert className="form-help" type="info" showIcon message={t('serviceConfigHelp')} />
         <Form
           form={form}
@@ -274,26 +315,13 @@ function ServicesPage() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="displayName" label={t('displayName')} rules={[{ required: true }]}>
+          <Form.Item name="targetPlatform" label={t('platform')} rules={[{ required: true, pattern: /^\S+$/, message: 'no spaces' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="targetPlatform" label={t('platform')} rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
+          <Form.Item name="displayName" hidden><Input /></Form.Item>
           <Form.Item name="providerPoolId" label={t('providerPoolId')} tooltip={t('poolHelp')}>
             <Input />
           </Form.Item>
-          <Form.Item name="maxPrice" label={t('maxPrice')} tooltip={t('maxPriceHelp')} rules={[{ required: true }]}>
-            <InputNumber min={0} precision={4} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="timeoutSeconds" label={t('timeoutSeconds')}>
-            <InputNumber min={60} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="status" label={t('status')}>
-            <Select options={['enabled', 'disabled'].map((item) => ({ label: t(item), value: item }))} />
-          </Form.Item>
-          <Form.Item name="countryCode" hidden><Input /></Form.Item>
-          <Form.Item name="countryName" hidden><Input /></Form.Item>
           <Space className="quote-row" wrap>
             <Button
               shape="round"
@@ -307,11 +335,22 @@ function ServicesPage() {
             {quote.data?.stock && <Tag color="cyan">{t('stock')}: {quote.data.stock.amount}</Tag>}
             {quote.data?.price && (
               <Tag color="green">
-                {t('price')}: {quote.data.price.price} / {t('successRate')}: {quote.data.price.successRate}%
+                {t('lowPrice')}: {quote.data.price.lowPrice || quote.data.price.price} / {t('highPrice')}: {quote.data.price.highPrice} / {t('successRate')}: {quote.data.price.successRate}%
               </Tag>
             )}
           </Space>
           {quote.error && <Alert className="form-help" type="warning" showIcon message={(quote.error as Error).message} />}
+          <Form.Item name="maxPrice" label={t('maxPrice')} tooltip={t('maxPriceHelp')} rules={[{ required: true }]}>
+            <InputNumber min={0} precision={4} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="timeoutSeconds" label={t('timeoutSeconds')} tooltip={t('timeoutHelp')}>
+            <InputNumber min={60} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="status" label={t('status')}>
+            <Select options={['enabled', 'disabled'].map((item) => ({ label: t(item), value: item }))} />
+          </Form.Item>
+          <Form.Item name="countryCode" hidden><Input /></Form.Item>
+          <Form.Item name="countryName" hidden><Input /></Form.Item>
           <Button htmlType="submit" type="primary" shape="round" loading={mutation.isPending}>
             {t('save')}
           </Button>
@@ -341,29 +380,31 @@ function BatchesPage() {
 
   return (
     <div className="admin-page">
-      <PageHead title={t('cardBatches')} onCreate={() => setOpen(true)} />
+      <PageHead title={t('cardBatches')} onCreate={() => setOpen(true)} onRefresh={() => batches.refetch()} />
       <Table
+        className="center-table"
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={batches.data || []}
         loading={batches.isLoading}
         columns={[
-          { title: t('id'), dataIndex: 'id', width: 76 },
-          { title: t('batchName'), dataIndex: 'name' },
-          { title: t('provider'), dataIndex: 'providerCode' },
-          { title: t('service'), dataIndex: 'serviceConfigId' },
-          { title: t('quantity'), dataIndex: 'quantity' },
-          { title: t('usesPerCode'), dataIndex: 'usesPerCode' },
-          { title: t('expiresAt'), dataIndex: 'expiresAt', render: (value) => value ? formatDateTime(value) : t('noExpiry') },
-          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
-          { title: t('exportedAt'), dataIndex: 'exportedAt', render: formatDateTime },
-          {
+          centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
+          centerColumn({ title: t('batchName'), dataIndex: 'name' }),
+          centerColumn({ title: t('provider'), dataIndex: 'providerCode' }),
+          centerColumn({ title: t('serviceKey'), width: 260, render: (_: unknown, row: any) => serviceKeyById(services.data || [], row.serviceConfigId) }),
+          centerColumn({ title: t('quantity'), dataIndex: 'quantity' }),
+          centerColumn({ title: t('usesPerCode'), dataIndex: 'usesPerCode' }),
+          centerColumn({ title: t('expiresAt'), dataIndex: 'expiresAt', render: (value: string) => value ? formatDateTime(value) : t('noExpiry') }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
+          centerColumn({ title: t('exportedAt'), dataIndex: 'exportedAt', render: formatDateTime }),
+          centerColumn({
             title: t('actions'),
-            render: (_, row: any) => (
+            render: (_: unknown, row: any) => (
               <Button shape="round" onClick={() => void downloadCardBatch(row.id)}>
                 {t('exportTxt')}
               </Button>
             ),
-          },
+          }),
         ]}
       />
       <Modal title={t('create')} open={open} footer={null} onCancel={() => setOpen(false)}>
@@ -378,7 +419,7 @@ function BatchesPage() {
         >
           <Form.Item name="name" label={t('batchName')} rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="serviceConfigId" label={t('service')} rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={(services.data || []).map((item) => ({ label: item.displayName, value: item.id }))} />
+            <Select showSearch optionFilterProp="label" options={(services.data || []).map((item) => ({ label: item.targetPlatform, value: item.id }))} />
           </Form.Item>
           <Form.Item name="quantity" label={t('quantity')} rules={[{ required: true }]}><InputNumber min={1} max={10000} style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="usesPerCode" label={t('usesPerCode')} rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
@@ -408,22 +449,28 @@ function CardsPage() {
   return (
     <div className="admin-page">
       {contextHolder}
-      <PageHead title={t('cardCodes')} />
+      <PageHead title={t('cardCodes')} onRefresh={() => query.refetch()} />
       <Table
+        className="center-table"
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={query.data || []}
         loading={query.isLoading}
         columns={[
-          { title: t('id'), dataIndex: 'id', width: 76 },
-          { title: t('cardCode'), dataIndex: 'codeMask' },
-          { title: t('service'), render: (_, row: any) => row.serviceConfig?.displayName || '-' },
-          { title: t('usedAndTotal'), render: (_, row: any) => `${row.remainingUses}/${row.totalUses}` },
-          { title: t('expiresAt'), dataIndex: 'expiresAt', render: (value) => value ? formatDateTime(value) : t('noExpiry') },
-          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
-          { title: t('status'), dataIndex: 'status', render: (value) => <Tag>{t(value)}</Tag> },
-          {
+          centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
+          centerColumn({
+            title: t('cardCode'),
+            dataIndex: 'codeMask',
+            render: (value: string, row: any) => <RevealableCardCode id={row.id} masked={value} />,
+          }),
+          centerColumn({ title: t('serviceKey'), width: 260, render: (_: unknown, row: any) => row.serviceConfig?.targetPlatform || '-' }),
+          centerColumn({ title: t('usedAndTotal'), render: (_: unknown, row: any) => `${row.remainingUses}/${row.totalUses}` }),
+          centerColumn({ title: t('expiresAt'), dataIndex: 'expiresAt', render: (value: string) => value ? formatDateTime(value) : t('noExpiry') }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
+          centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
+          centerColumn({
             title: t('actions'),
-            render: (_, row: any) => (
+            render: (_: unknown, row: any) => (
               <Select
                 value={row.status}
                 style={{ width: 120 }}
@@ -431,7 +478,7 @@ function CardsPage() {
                 options={['enabled', 'disabled', 'voided'].map((item) => ({ label: t(item), value: item }))}
               />
             ),
-          },
+          }),
         ]}
       />
     </div>
@@ -443,22 +490,24 @@ function OrdersPage() {
   const query = useQuery({ queryKey: ['orders'], queryFn: listOrders, refetchInterval: 8000 });
   return (
     <div className="admin-page">
-      <PageHead title={t('orders')} />
+      <PageHead title={t('orders')} onRefresh={() => query.refetch()} />
       <Table
+        className="center-table"
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={query.data || []}
         loading={query.isLoading}
         columns={[
-          { title: t('id'), dataIndex: 'id', width: 76 },
-          { title: t('orderNo'), dataIndex: 'orderNo' },
-          { title: t('service'), render: (_, row: any) => row.serviceConfig?.displayName || '-' },
-          { title: t('phoneNumber'), dataIndex: 'phoneNumber' },
-          { title: t('verificationCode'), dataIndex: 'verificationCode' },
-          { title: t('supplierOrderId'), dataIndex: 'supplierOrderId' },
-          { title: t('cost'), dataIndex: 'cost' },
-          { title: t('status'), dataIndex: 'status', render: (value) => <Tag>{t(value)}</Tag> },
-          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
-          { title: t('updatedAt'), dataIndex: 'updatedAt', render: formatDateTime },
+          centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
+          centerColumn({ title: t('orderNo'), dataIndex: 'orderNo' }),
+          centerColumn({ title: t('serviceKey'), width: 260, render: (_: unknown, row: any) => row.serviceConfig?.targetPlatform || '-' }),
+          centerColumn({ title: t('phoneNumber'), dataIndex: 'phoneNumber' }),
+          centerColumn({ title: t('verificationCode'), dataIndex: 'verificationCode' }),
+          centerColumn({ title: t('supplierOrderId'), dataIndex: 'supplierOrderId' }),
+          centerColumn({ title: t('cost'), dataIndex: 'cost' }),
+          centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
+          centerColumn({ title: t('updatedAt'), dataIndex: 'updatedAt', render: formatDateTime }),
         ]}
       />
     </div>
@@ -470,17 +519,19 @@ function AuditPage() {
   const query = useQuery({ queryKey: ['audit-logs'], queryFn: listAuditLogs });
   return (
     <div className="admin-page">
-      <PageHead title={t('auditLogs')} />
+      <PageHead title={t('auditLogs')} onRefresh={() => query.refetch()} />
       <Table
+        className="center-table"
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={query.data || []}
         loading={query.isLoading}
         columns={[
-          { title: t('id'), dataIndex: 'id', width: 76 },
-          { title: t('actions'), dataIndex: 'action' },
-          { title: t('resource'), dataIndex: 'resourceType' },
-          { title: 'IP', dataIndex: 'ip' },
-          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
+          centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
+          centerColumn({ title: t('actions'), dataIndex: 'action' }),
+          centerColumn({ title: t('resource'), dataIndex: 'resourceType' }),
+          centerColumn({ title: 'IP', dataIndex: 'ip' }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
         ]}
       />
     </div>
@@ -529,16 +580,79 @@ function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }
   );
 }
 
-function PageHead({ title, onCreate }: { title: string; onCreate?: () => void }) {
+function PageHead({ title, onCreate, onRefresh }: { title: string; onCreate?: () => void; onRefresh?: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="page-head">
       <h1>{title}</h1>
-      <Space>{onCreate && <Button type="primary" shape="round" onClick={onCreate}>{t('create')}</Button>}</Space>
+      <Space>
+        {onRefresh && (
+          <Tooltip title={t('refresh')}>
+            <Button shape="circle" icon={<RefreshCw size={16} />} onClick={onRefresh} />
+          </Tooltip>
+        )}
+        {onCreate && <Button type="primary" shape="round" onClick={onCreate}>{t('create')}</Button>}
+      </Space>
     </div>
   );
 }
 
-function toPlatformKey(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+function RevealableCardCode({ id, masked }: { id: number; masked: string }) {
+  const [msg, contextHolder] = message.useMessage();
+  const { t } = useTranslation();
+  const [plain, setPlain] = useState('');
+  const [visible, setVisible] = useState(false);
+  const reveal = async () => {
+    try {
+      const data = await revealCardCode(id);
+      setPlain(data.code);
+      setVisible(true);
+    } catch (error: any) {
+      msg.error(error?.message || t('codeHiddenUnavailable'));
+    }
+  };
+  const value = visible && plain ? plain : masked;
+  return (
+    <Space>
+      {contextHolder}
+      <span>{value}</span>
+      <Button size="small" type="text" shape="circle" icon={<Eye size={15} />} onClick={() => (plain ? setVisible((next) => !next) : void reveal())} />
+      <Button
+        size="small"
+        type="text"
+        shape="circle"
+        icon={<Copy size={15} />}
+        onClick={async () => {
+          try {
+            const copyValue = plain || (await revealCardCode(id)).code;
+            setPlain(copyValue);
+            await navigator.clipboard.writeText(copyValue);
+            msg.success(t('copied'));
+          } catch (error: any) {
+            msg.error(error?.message || t('codeHiddenUnavailable'));
+          }
+        }}
+      />
+    </Space>
+  );
+}
+
+function StatusTag({ status }: { status: string }) {
+  const { t } = useTranslation();
+  return <Tag color={statusColor(status)}>{t(status)}</Tag>;
+}
+
+function centerColumn(column: any) {
+  return { align: 'center' as const, ...column };
+}
+
+function serviceKeyById(services: any[], id: number) {
+  return services.find((item) => item.id === id)?.targetPlatform || id || '-';
+}
+
+function buildServiceKey(provider: string, country: string, service: string) {
+  return [provider, country, service]
+    .filter(Boolean)
+    .map((part) => part.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''))
+    .join('-');
 }

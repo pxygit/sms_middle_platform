@@ -159,8 +159,53 @@ input {
   background: rgba(20, 184, 166, 0.1);
 }
 
-.service-pill span {
-  color: #5b7284;
+.service-lines {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.service-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.service-lines b,
+.service-lines small {
+  overflow-wrap: anywhere;
+}
+
+.service-line span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 8px;
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.12);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.service-lines b {
+  color: #14213d;
+  font-size: 17px;
+}
+
+.service-lines small {
+  color: #607687;
+  font-size: 14px;
+}
+
+:root[data-theme="dark"] .service-lines b {
+  color: #e6fbff;
+}
+
+:root[data-theme="dark"] .service-line span {
+  color: #67e8f9;
+  background: rgba(103, 232, 249, 0.12);
 }
 
 .status-section {
@@ -360,6 +405,20 @@ input {
 
 .quote-row {
   margin-bottom: 16px;
+}
+
+.center-table .ant-table-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.center-table .ant-table-content {
+  overflow-x: auto;
+}
+
+.wide-key-column {
+  min-width: 260px;
+  overflow-wrap: anywhere;
 }
 
 .admin-stat-grid {

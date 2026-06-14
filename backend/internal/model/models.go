@@ -86,6 +86,7 @@ type CardCode struct {
 	ID              uint       `gorm:"primaryKey" json:"id"`
 	CodeHash        string     `gorm:"size:128;uniqueIndex;not null" json:"-"`
 	CodeMask        string     `gorm:"size:64;not null" json:"codeMask"`
+	CodeCipher      string     `gorm:"type:text" json:"-"`
 	ProviderCode    string     `gorm:"size:64;index;not null" json:"providerCode"`
 	ServiceConfigID uint       `gorm:"index;not null" json:"serviceConfigId"`
 	BatchID         uint       `gorm:"index;not null" json:"batchId"`
@@ -102,29 +103,31 @@ type CardCode struct {
 func (CardCode) TableName() string { return "sys_card_codes" }
 
 type ReceiveOrder struct {
-	ID               uint           `gorm:"primaryKey" json:"id"`
-	OrderNo          string         `gorm:"size:64;uniqueIndex;not null" json:"orderNo"`
-	CardCodeID       uint           `gorm:"index;not null" json:"cardCodeId"`
-	ProviderCode     string         `gorm:"size:64;index;not null" json:"providerCode"`
-	ServiceConfigID  uint           `gorm:"index;not null" json:"serviceConfigId"`
-	SupplierOrderID  string         `gorm:"size:128;index" json:"supplierOrderId"`
-	SupplierToken    string         `gorm:"size:255" json:"supplierToken"`
-	PhoneNumber      string         `gorm:"size:64" json:"phoneNumber"`
-	VerificationCode string         `gorm:"size:128" json:"verificationCode"`
-	SMSContent       string         `gorm:"type:text" json:"smsContent"`
-	Cost             float64        `gorm:"type:numeric(12,4);not null;default:0" json:"cost"`
-	MaxPrice         float64        `gorm:"type:numeric(12,4);not null;default:0" json:"maxPrice"`
-	Status           string         `gorm:"size:32;index;not null;default:created" json:"status"`
-	SupplierStatus   string         `gorm:"size:64" json:"supplierStatus"`
-	RawResponse      datatypes.JSON `gorm:"type:jsonb" json:"rawResponse"`
-	FailureReason    string         `gorm:"type:text" json:"failureReason"`
-	StartedAt        *time.Time     `json:"startedAt"`
-	ReceivedAt       *time.Time     `json:"receivedAt"`
-	CancelledAt      *time.Time     `json:"cancelledAt"`
-	ExpiredAt        *time.Time     `json:"expiredAt"`
-	LastPolledAt     *time.Time     `json:"lastPolledAt"`
-	CreatedAt        time.Time      `json:"createdAt"`
-	UpdatedAt        time.Time      `json:"updatedAt"`
+	ID                  uint           `gorm:"primaryKey" json:"id"`
+	OrderNo             string         `gorm:"size:64;uniqueIndex;not null" json:"orderNo"`
+	CardCodeID          uint           `gorm:"index;not null" json:"cardCodeId"`
+	ProviderCode        string         `gorm:"size:64;index;not null" json:"providerCode"`
+	ServiceConfigID     uint           `gorm:"index;not null" json:"serviceConfigId"`
+	SupplierOrderID     string         `gorm:"size:128;index" json:"supplierOrderId"`
+	SupplierToken       string         `gorm:"size:255" json:"supplierToken"`
+	PhoneNumber         string         `gorm:"size:64" json:"phoneNumber"`
+	PhoneCountryCode    string         `gorm:"size:16" json:"phoneCountryCode"`
+	PhoneNationalNumber string         `gorm:"size:64" json:"phoneNationalNumber"`
+	VerificationCode    string         `gorm:"size:128" json:"verificationCode"`
+	SMSContent          string         `gorm:"type:text" json:"smsContent"`
+	Cost                float64        `gorm:"type:numeric(12,4);not null;default:0" json:"cost"`
+	MaxPrice            float64        `gorm:"type:numeric(12,4);not null;default:0" json:"maxPrice"`
+	Status              string         `gorm:"size:32;index;not null;default:created" json:"status"`
+	SupplierStatus      string         `gorm:"size:64" json:"supplierStatus"`
+	RawResponse         datatypes.JSON `gorm:"type:jsonb" json:"rawResponse"`
+	FailureReason       string         `gorm:"type:text" json:"failureReason"`
+	StartedAt           *time.Time     `json:"startedAt"`
+	ReceivedAt          *time.Time     `json:"receivedAt"`
+	CancelledAt         *time.Time     `json:"cancelledAt"`
+	ExpiredAt           *time.Time     `json:"expiredAt"`
+	LastPolledAt        *time.Time     `json:"lastPolledAt"`
+	CreatedAt           time.Time      `json:"createdAt"`
+	UpdatedAt           time.Time      `json:"updatedAt"`
 
 	ServiceConfig ServiceConfig `gorm:"foreignKey:ServiceConfigID" json:"serviceConfig"`
 }

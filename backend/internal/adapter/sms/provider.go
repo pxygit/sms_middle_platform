@@ -17,15 +17,17 @@ type RequestNumberInput struct {
 }
 
 type RequestNumberResult struct {
-	SupplierOrderID string
-	SupplierToken   string
-	PhoneNumber     string
-	Country         string
-	Service         string
-	Cost            float64
-	ExpiresIn       int
-	Expiration      int64
-	Raw             json.RawMessage
+	SupplierOrderID     string
+	SupplierToken       string
+	PhoneNumber         string
+	PhoneCountryCode    string
+	PhoneNationalNumber string
+	Country             string
+	Service             string
+	Cost                float64
+	ExpiresIn           int
+	Expiration          int64
+	Raw                 json.RawMessage
 }
 
 type CheckSMSInput struct {
@@ -73,6 +75,7 @@ type ProviderPriceInput struct {
 
 type ProviderPrice struct {
 	Pool        int             `json:"pool"`
+	LowPrice    string          `json:"lowPrice"`
 	HighPrice   string          `json:"highPrice"`
 	Price       string          `json:"price"`
 	SuccessRate float64         `json:"successRate"`

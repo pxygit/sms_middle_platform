@@ -2,6 +2,7 @@ import { ConfigProvider, theme as antdTheme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PreferencesProvider, usePreferences } from './preferences';
 import { HomePage } from '../pages/public/HomePage';
@@ -10,7 +11,11 @@ import { AdminLayout } from '../pages/admin/AdminLayout';
 
 function Shell() {
   const { theme } = usePreferences();
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
+
+  useEffect(() => {
+    document.title = t('documentTitle');
+  }, [i18n.language, t]);
 
   return (
     <ConfigProvider

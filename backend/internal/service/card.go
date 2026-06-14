@@ -15,8 +15,9 @@ import (
 )
 
 type CardService struct {
-	db        *gorm.DB
-	exportDir string
+	db            *gorm.DB
+	exportDir     string
+	encryptionKey string
 }
 
 type CreateBatchInput struct {
@@ -34,8 +35,8 @@ type VerifyCardResult struct {
 	ServiceConfig model.ServiceConfig `json:"serviceConfig"`
 }
 
-func NewCardService(db *gorm.DB, exportDir string) *CardService {
-	return &CardService{db: db, exportDir: exportDir}
+func NewCardService(db *gorm.DB, exportDir, encryptionKey string) *CardService {
+	return &CardService{db: db, exportDir: exportDir, encryptionKey: encryptionKey}
 }
 
 func (s *CardService) CreateBatch(input CreateBatchInput, adminID uint) (*model.CardBatch, error) {
@@ -70,10 +71,15 @@ func (s *CardService) CreateBatch(input CreateBatchInput, adminID uint) (*model.
 			if err != nil {
 				return err
 			}
+			cipherText, err := util.EncryptString(s.encryptionKey, code)
+			if err != nil {
+				return err
+			}
 			codes = append(codes, code)
 			card := model.CardCode{
 				CodeHash:        util.HashCardCode(code),
 				CodeMask:        util.MaskCardCode(code),
+				CodeCipher:      cipherText,
 				ProviderCode:    config.ProviderCode,
 				ServiceConfigID: input.ServiceConfigID,
 				BatchID:         b.ID,
@@ -128,6 +134,17 @@ func (s *CardService) UpdateStatus(id uint, status string) error {
 		return errors.New("invalid card status")
 	}
 	return s.db.Model(&model.CardCode{}).Where("id = ?", id).Update("status", status).Error
+}
+
+func (s *CardService) RevealCode(id uint) (string, error) {
+	var card model.CardCode
+	if err := s.db.First(&card, id).Error; err != nil {
+		return "", err
+	}
+	if card.CodeCipher == "" {
+		return "", errors.New("plain card code is unavailable for this record")
+	}
+	return util.DecryptString(s.encryptionKey, card.CodeCipher)
 }
 
 func (s *CardService) ExportBatch(id uint) (string, error) {

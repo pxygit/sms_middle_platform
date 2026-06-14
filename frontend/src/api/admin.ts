@@ -47,6 +47,14 @@ export function createServiceConfig(payload: Partial<ServiceConfig>) {
   return unwrap<ServiceConfig>(api.post('/admin/service-configs', payload));
 }
 
+export function updateServiceConfig(id: number, payload: Partial<ServiceConfig>) {
+  return unwrap<ServiceConfig>(api.patch(`/admin/service-configs/${id}`, payload));
+}
+
+export function deleteServiceConfig(id: number) {
+  return unwrap<{ deleted: boolean }>(api.delete(`/admin/service-configs/${id}`));
+}
+
 export function createCardBatch(payload: {
   name: string;
   serviceConfigId: number;
@@ -80,6 +88,10 @@ export function listCardCodes() {
 
 export function updateCardStatus(id: number, status: string) {
   return unwrap<{ id: number; status: string }>(api.patch(`/admin/card-codes/${id}/status`, { status }));
+}
+
+export function revealCardCode(id: number) {
+  return unwrap<{ code: string }>(api.get(`/admin/card-codes/${id}/reveal`));
 }
 
 export function listOrders() {

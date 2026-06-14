@@ -74,6 +74,20 @@ func (h *CatalogHandler) UpdateServiceConfig(c *gin.Context) {
 	response.OK(c, config)
 }
 
+func (h *CatalogHandler) DeleteServiceConfig(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid id")
+		return
+	}
+	if err := h.catalog.DeleteServiceConfig(uint(id)); err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	h.audit.Record("admin", adminID(c), "service_config.delete", "service_config", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	response.OK(c, gin.H{"deleted": true})
+}
+
 func (h *CatalogHandler) ProviderCountries(c *gin.Context) {
 	countries, err := h.meta.Countries(c.Request.Context(), c.Param("provider"))
 	if err != nil {

@@ -32,6 +32,8 @@ export interface ReceiveOrder {
   providerCode: string;
   supplierOrderId?: string;
   phoneNumber?: string;
+  phoneCountryCode?: string;
+  phoneNationalNumber?: string;
   verificationCode?: string;
   smsContent?: string;
   cost: number;
@@ -39,6 +41,10 @@ export interface ReceiveOrder {
   status: string;
   supplierStatus?: string;
   failureReason?: string;
+  startedAt?: string;
+  receivedAt?: string;
+  cancelledAt?: string;
+  expiredAt?: string;
   createdAt: string;
   updatedAt: string;
   serviceConfig?: ServiceConfig;
@@ -96,6 +102,7 @@ export interface ProviderPrice {
   pool: number;
   highPrice: string;
   price: string;
+  lowPrice?: string;
   successRate: number;
 }
 

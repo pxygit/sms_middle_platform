@@ -1,6 +1,8 @@
 package service
 
 import (
+	"errors"
+
 	"sms-middle-platform/backend/internal/model"
 
 	"gorm.io/gorm"
@@ -91,4 +93,21 @@ func (s *CatalogService) UpdateServiceConfig(id uint, input ServiceConfigInput) 
 		return nil, err
 	}
 	return &config, s.db.First(&config, id).Error
+}
+
+func (s *CatalogService) DeleteServiceConfig(id uint) error {
+	var count int64
+	if err := s.db.Model(&model.CardCode{}).Where("service_config_id = ?", id).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("service config is already used by card codes")
+	}
+	if err := s.db.Model(&model.ReceiveOrder{}).Where("service_config_id = ?", id).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("service config is already used by orders")
+	}
+	return s.db.Delete(&model.ServiceConfig{}, id).Error
 }
