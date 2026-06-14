@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"sms-middle-platform/backend/internal/adapter/sms"
 	"sms-middle-platform/backend/internal/response"
 	"sms-middle-platform/backend/internal/service"
 
@@ -12,11 +13,12 @@ import (
 
 type CatalogHandler struct {
 	catalog *service.CatalogService
+	meta    *service.ProviderMetadataService
 	audit   *service.AuditService
 }
 
-func NewCatalogHandler(catalog *service.CatalogService, audit *service.AuditService) *CatalogHandler {
-	return &CatalogHandler{catalog: catalog, audit: audit}
+func NewCatalogHandler(catalog *service.CatalogService, meta *service.ProviderMetadataService, audit *service.AuditService) *CatalogHandler {
+	return &CatalogHandler{catalog: catalog, meta: meta, audit: audit}
 }
 
 func (h *CatalogHandler) Providers(c *gin.Context) {
@@ -70,4 +72,48 @@ func (h *CatalogHandler) UpdateServiceConfig(c *gin.Context) {
 	}
 	h.audit.Record("admin", adminID(c), "service_config.update", "service_config", stringID(config.ID), c.ClientIP(), c.Request.UserAgent(), req)
 	response.OK(c, config)
+}
+
+func (h *CatalogHandler) ProviderCountries(c *gin.Context) {
+	countries, err := h.meta.Countries(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, countries)
+}
+
+func (h *CatalogHandler) ProviderServices(c *gin.Context) {
+	services, err := h.meta.Services(c.Request.Context(), c.Param("provider"), c.Query("countryId"))
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, services)
+}
+
+func (h *CatalogHandler) ProviderPrice(c *gin.Context) {
+	price, err := h.meta.Price(c.Request.Context(), c.Param("provider"), sms.ProviderPriceInput{
+		CountryID: c.Query("countryId"),
+		ServiceID: c.Query("serviceId"),
+		PoolID:    c.Query("poolId"),
+	})
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, price)
+}
+
+func (h *CatalogHandler) ProviderStock(c *gin.Context) {
+	stock, err := h.meta.Stock(c.Request.Context(), c.Param("provider"), sms.ProviderStockInput{
+		CountryID: c.Query("countryId"),
+		ServiceID: c.Query("serviceId"),
+		PoolID:    c.Query("poolId"),
+	})
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, stock)
 }

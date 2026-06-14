@@ -37,3 +37,22 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	h.audit.Record("admin", result.Admin.ID, "admin.login", "admin", stringID(result.Admin.ID), c.ClientIP(), c.Request.UserAgent(), nil)
 	response.OK(c, result)
 }
+
+type changePasswordRequest struct {
+	OldPassword string `json:"oldPassword" binding:"required"`
+	NewPassword string `json:"newPassword" binding:"required"`
+}
+
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	var req changePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "oldPassword and newPassword are required")
+		return
+	}
+	if err := h.admins.ChangePassword(adminID(c), req.OldPassword, req.NewPassword); err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	h.audit.Record("admin", adminID(c), "admin.change_password", "admin", stringID(adminID(c)), c.ClientIP(), c.Request.UserAgent(), nil)
+	response.OK(c, gin.H{"changed": true})
+}

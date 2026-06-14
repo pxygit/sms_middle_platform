@@ -78,3 +78,27 @@ export interface CardCode {
   status: string;
   serviceConfig?: ServiceConfig;
 }
+
+export interface ProviderCountry {
+  id: number;
+  name: string;
+  shortName: string;
+  region: string;
+}
+
+export interface ProviderService {
+  id: number;
+  name: string;
+  favourite: number;
+}
+
+export interface ProviderPrice {
+  pool: number;
+  highPrice: string;
+  price: string;
+  successRate: number;
+}
+
+export interface ProviderStock {
+  amount: number;
+}

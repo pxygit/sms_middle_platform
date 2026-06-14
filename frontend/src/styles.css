@@ -309,10 +309,23 @@ input {
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+.admin-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 0 8px 18px;
+}
+
 .admin-brand {
-  height: 48px;
-  padding: 0 12px 18px;
+  min-width: 0;
   color: #0f766e;
+  font-size: 20px;
+  text-decoration: none;
+}
+
+.admin-brand:hover {
+  color: #14b8a6;
 }
 
 .admin-header {
@@ -339,6 +352,14 @@ input {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.form-help {
+  margin-bottom: 16px;
+}
+
+.quote-row {
+  margin-bottom: 16px;
 }
 
 .admin-stat-grid {

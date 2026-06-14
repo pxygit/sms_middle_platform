@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   DatePicker,
   Form,
@@ -11,26 +12,48 @@ import {
   Modal,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
-import { Sparkles } from 'lucide-react';
+import {
+  Boxes,
+  ClipboardList,
+  Database,
+  Home,
+  KeyRound,
+  LockKeyhole,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ScrollText,
+  Settings2,
+  Sparkles,
+} from 'lucide-react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  changePassword,
   createCardBatch,
   createServiceConfig,
   downloadCardBatch,
+  getProviderPrice,
+  getProviderStock,
   listAuditLogs,
   listCardBatches,
   listCardCodes,
   listOrders,
+  listProviderCountries,
+  listProviderServices,
   listProviders,
   listServiceConfigs,
   updateCardStatus,
 } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
+import { formatDateTime } from '../../utils/format';
+import type { ProviderCountry, ProviderService } from '../../types/api';
 
 const { Header, Sider, Content } = Layout;
 
@@ -39,6 +62,8 @@ export function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const [collapsed, setCollapsed] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   if (!token) return <Navigate to="/admin/login" replace />;
 
@@ -52,30 +77,46 @@ export function AdminLayout() {
 
   return (
     <Layout className="admin-shell">
-      <Sider width={232} className="admin-sider">
-        <div className="admin-brand">
-          <Sparkles size={20} />
-          <span>{t('brand')}</span>
+      <Sider width={244} collapsedWidth={78} collapsed={collapsed} trigger={null} className="admin-sider">
+        <div className="admin-brand-row">
+          <Link to="/" className="admin-brand">
+            <Sparkles size={collapsed ? 28 : 30} />
+            {!collapsed && <span>{t('brand')}</span>}
+          </Link>
+          <Tooltip title={collapsed ? t('unfoldMenu') : t('foldMenu')}>
+            <Button
+              type="text"
+              shape="circle"
+              icon={collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+              onClick={() => setCollapsed((value) => !value)}
+            />
+          </Tooltip>
         </div>
         <Menu
           mode="inline"
           selectedKeys={[selected]}
+          inlineCollapsed={collapsed}
           items={[
-            { key: 'dashboard', label: <Link to="/admin">{t('dashboard')}</Link> },
-            { key: 'services', label: <Link to="/admin/services">{t('serviceConfigs')}</Link> },
-            { key: 'batches', label: <Link to="/admin/batches">{t('cardBatches')}</Link> },
-            { key: 'cards', label: <Link to="/admin/cards">{t('cardCodes')}</Link> },
-            { key: 'orders', label: <Link to="/admin/orders">{t('orders')}</Link> },
-            { key: 'audit', label: <Link to="/admin/audit">{t('auditLogs')}</Link> },
+            { key: 'dashboard', icon: <Home size={18} />, label: <Link to="/admin">{t('dashboard')}</Link> },
+            { key: 'services', icon: <Settings2 size={18} />, label: <Link to="/admin/services">{t('serviceConfigs')}</Link> },
+            { key: 'batches', icon: <Boxes size={18} />, label: <Link to="/admin/batches">{t('cardBatches')}</Link> },
+            { key: 'cards', icon: <KeyRound size={18} />, label: <Link to="/admin/cards">{t('cardCodes')}</Link> },
+            { key: 'orders', icon: <ClipboardList size={18} />, label: <Link to="/admin/orders">{t('orders')}</Link> },
+            { key: 'audit', icon: <ScrollText size={18} />, label: <Link to="/admin/audit">{t('auditLogs')}</Link> },
           ]}
         />
       </Sider>
       <Layout>
         <Header className="admin-header">
           <PreferenceBar compact />
-          <Button shape="round" onClick={logout}>
-            {t('logout')}
-          </Button>
+          <Space>
+            <Button shape="round" icon={<LockKeyhole size={16} />} onClick={() => setPasswordOpen(true)}>
+              {t('changePassword')}
+            </Button>
+            <Button shape="round" icon={<LogOut size={16} />} onClick={logout}>
+              {t('logout')}
+            </Button>
+          </Space>
         </Header>
         <Content className="admin-content">
           <Routes>
@@ -88,6 +129,7 @@ export function AdminLayout() {
           </Routes>
         </Content>
       </Layout>
+      <PasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
     </Layout>
   );
 }
@@ -121,15 +163,59 @@ function Stat({ title, value }: { title: string; value: number }) {
 function ServicesPage() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
   const qc = useQueryClient();
+  const providerCode = Form.useWatch('providerCode', form) || 'smspool';
+  const countryId = Form.useWatch('providerCountryId', form);
+  const serviceId = Form.useWatch('providerServiceId', form);
+  const poolId = Form.useWatch('providerPoolId', form);
   const query = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
+  const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
+  const countries = useQuery({
+    queryKey: ['provider-countries', providerCode],
+    queryFn: () => listProviderCountries(providerCode),
+    enabled: open && providerCode === 'smspool',
+  });
+  const services = useQuery({
+    queryKey: ['provider-services', providerCode, countryId],
+    queryFn: () => listProviderServices(providerCode, countryId),
+    enabled: open && providerCode === 'smspool' && Boolean(countryId),
+  });
+  const quote = useMutation({
+    mutationFn: async () => ({
+      price: await getProviderPrice(providerCode, { countryId, serviceId, poolId }),
+      stock: await getProviderStock(providerCode, { countryId, serviceId, poolId }),
+    }),
+  });
   const mutation = useMutation({
     mutationFn: createServiceConfig,
     onSuccess: () => {
+      form.resetFields();
       setOpen(false);
       void qc.invalidateQueries({ queryKey: ['service-configs'] });
     },
   });
+
+  const onCountryChange = (value: string) => {
+    const selected = countries.data?.find((item) => String(item.id) === value);
+    form.setFieldsValue({
+      providerCountryId: value,
+      countryCode: selected?.shortName || '',
+      countryName: selected?.name || '',
+      providerServiceId: undefined,
+      displayName: undefined,
+      targetPlatform: undefined,
+    });
+  };
+
+  const onServiceChange = (value: string) => {
+    const selected = services.data?.find((item) => String(item.id) === value);
+    form.setFieldsValue({
+      providerServiceId: value,
+      displayName: selected?.name || '',
+      targetPlatform: toPlatformKey(selected?.name || ''),
+    });
+  };
 
   return (
     <div className="admin-page">
@@ -139,28 +225,96 @@ function ServicesPage() {
         dataSource={query.data || []}
         loading={query.isLoading}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
-          { title: t('service'), dataIndex: 'displayName' },
-          { title: 'Provider', dataIndex: 'providerCode' },
-          { title: 'Platform', dataIndex: 'targetPlatform' },
-          { title: t('country'), dataIndex: 'countryCode' },
-          { title: 'Max Price', dataIndex: 'maxPrice' },
-          { title: t('status'), dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
+          { title: t('id'), dataIndex: 'id', width: 76 },
+          { title: t('displayName'), dataIndex: 'displayName' },
+          { title: t('provider'), dataIndex: 'providerCode' },
+          { title: t('platform'), dataIndex: 'targetPlatform' },
+          { title: t('country'), render: (_, row: any) => row.countryName || row.countryCode },
+          { title: t('providerServiceId'), dataIndex: 'providerServiceId' },
+          { title: t('maxPrice'), dataIndex: 'maxPrice' },
+          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
+          { title: t('status'), dataIndex: 'status', render: (value) => <Tag>{t(value)}</Tag> },
         ]}
       />
-      <Modal title={t('create')} open={open} footer={null} onCancel={() => setOpen(false)}>
-        <Form layout="vertical" onFinish={(values) => mutation.mutate(values)} initialValues={{ providerCode: 'smspool', timeoutSeconds: 1200, status: 'enabled' }}>
-          <Form.Item name="providerCode" label="Provider" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="displayName" label={t('service')} rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="targetPlatform" label="Platform" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="countryCode" label={t('country')} rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="countryName" label="Country Name"><Input /></Form.Item>
-          <Form.Item name="providerCountryId" label="Provider Country ID" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="providerServiceId" label="Provider Service ID" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="providerPoolId" label="Provider Pool ID"><Input /></Form.Item>
-          <Form.Item name="maxPrice" label="Max Price"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="timeoutSeconds" label="Timeout Seconds"><InputNumber min={60} style={{ width: '100%' }} /></Form.Item>
-          <Button htmlType="submit" type="primary" shape="round" loading={mutation.isPending}>{t('save')}</Button>
+      <Modal title={t('create')} open={open} footer={null} onCancel={() => setOpen(false)} width={720}>
+        <Alert className="form-help" type="info" showIcon message={t('serviceConfigHelp')} />
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values) => mutation.mutate(values)}
+          initialValues={{ providerCode: 'smspool', timeoutSeconds: 1200, status: 'enabled' }}
+        >
+          <Form.Item name="providerCode" label={t('provider')} rules={[{ required: true }]}>
+            <Select options={(providers.data || []).map((item) => ({ label: item.name, value: item.code }))} />
+          </Form.Item>
+          <Form.Item name="providerCountryId" label={t('providerCountry')} rules={[{ required: true }]}>
+            <Select
+              showSearch
+              loading={countries.isLoading}
+              optionFilterProp="label"
+              placeholder={t('selectProviderFirst')}
+              onChange={onCountryChange}
+              options={(countries.data || []).map((item: ProviderCountry) => ({
+                label: `${item.name} (${item.shortName})`,
+                value: String(item.id),
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="providerServiceId" label={t('providerService')} rules={[{ required: true }]}>
+            <Select
+              showSearch
+              loading={services.isLoading}
+              disabled={!countryId}
+              optionFilterProp="label"
+              placeholder={t('selectCountryFirst')}
+              onChange={onServiceChange}
+              options={(services.data || []).map((item: ProviderService) => ({
+                label: item.name,
+                value: String(item.id),
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="displayName" label={t('displayName')} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="targetPlatform" label={t('platform')} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="providerPoolId" label={t('providerPoolId')} tooltip={t('poolHelp')}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="maxPrice" label={t('maxPrice')} tooltip={t('maxPriceHelp')} rules={[{ required: true }]}>
+            <InputNumber min={0} precision={4} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="timeoutSeconds" label={t('timeoutSeconds')}>
+            <InputNumber min={60} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="status" label={t('status')}>
+            <Select options={['enabled', 'disabled'].map((item) => ({ label: t(item), value: item }))} />
+          </Form.Item>
+          <Form.Item name="countryCode" hidden><Input /></Form.Item>
+          <Form.Item name="countryName" hidden><Input /></Form.Item>
+          <Space className="quote-row" wrap>
+            <Button
+              shape="round"
+              icon={<Database size={16} />}
+              onClick={() => quote.mutate()}
+              loading={quote.isPending}
+              disabled={!countryId || !serviceId}
+            >
+              {t('refreshQuote')}
+            </Button>
+            {quote.data?.stock && <Tag color="cyan">{t('stock')}: {quote.data.stock.amount}</Tag>}
+            {quote.data?.price && (
+              <Tag color="green">
+                {t('price')}: {quote.data.price.price} / {t('successRate')}: {quote.data.price.successRate}%
+              </Tag>
+            )}
+          </Space>
+          {quote.error && <Alert className="form-help" type="warning" showIcon message={(quote.error as Error).message} />}
+          <Button htmlType="submit" type="primary" shape="round" loading={mutation.isPending}>
+            {t('save')}
+          </Button>
         </Form>
       </Modal>
     </div>
@@ -170,12 +324,16 @@ function ServicesPage() {
 function BatchesPage() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [permanent, setPermanent] = useState(false);
+  const [form] = Form.useForm();
   const qc = useQueryClient();
   const batches = useQuery({ queryKey: ['card-batches'], queryFn: listCardBatches });
   const services = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
   const mutation = useMutation({
     mutationFn: createCardBatch,
     onSuccess: () => {
+      form.resetFields();
+      setPermanent(false);
       setOpen(false);
       void qc.invalidateQueries({ queryKey: ['card-batches'] });
     },
@@ -189,14 +347,18 @@ function BatchesPage() {
         dataSource={batches.data || []}
         loading={batches.isLoading}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
-          { title: 'Name', dataIndex: 'name' },
-          { title: 'Provider', dataIndex: 'providerCode' },
-          { title: 'Quantity', dataIndex: 'quantity' },
-          { title: 'Uses', dataIndex: 'usesPerCode' },
+          { title: t('id'), dataIndex: 'id', width: 76 },
+          { title: t('batchName'), dataIndex: 'name' },
+          { title: t('provider'), dataIndex: 'providerCode' },
+          { title: t('service'), dataIndex: 'serviceConfigId' },
+          { title: t('quantity'), dataIndex: 'quantity' },
+          { title: t('usesPerCode'), dataIndex: 'usesPerCode' },
+          { title: t('expiresAt'), dataIndex: 'expiresAt', render: (value) => value ? formatDateTime(value) : t('noExpiry') },
+          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
+          { title: t('exportedAt'), dataIndex: 'exportedAt', render: formatDateTime },
           {
-            title: t('exportTxt'),
-            render: (_, row) => (
+            title: t('actions'),
+            render: (_, row: any) => (
               <Button shape="round" onClick={() => void downloadCardBatch(row.id)}>
                 {t('exportTxt')}
               </Button>
@@ -205,17 +367,25 @@ function BatchesPage() {
         ]}
       />
       <Modal title={t('create')} open={open} footer={null} onCancel={() => setOpen(false)}>
-        <Form layout="vertical" onFinish={(values) => {
-          const expiresAt = values.expiresAt?.toISOString?.();
-          mutation.mutate({ ...values, expiresAt });
-        }}>
-          <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ usesPerCode: 1, quantity: 1 }}
+          onFinish={(values) => {
+            const expiresAt = permanent ? undefined : values.expiresAt?.toISOString?.();
+            mutation.mutate({ ...values, expiresAt });
+          }}
+        >
+          <Form.Item name="name" label={t('batchName')} rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="serviceConfigId" label={t('service')} rules={[{ required: true }]}>
-            <Select options={(services.data || []).map((item) => ({ label: item.displayName, value: item.id }))} />
+            <Select showSearch optionFilterProp="label" options={(services.data || []).map((item) => ({ label: item.displayName, value: item.id }))} />
           </Form.Item>
-          <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}><InputNumber min={1} max={10000} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="usesPerCode" label="Uses" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="expiresAt" label="Expires At"><DatePicker showTime style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="quantity" label={t('quantity')} rules={[{ required: true }]}><InputNumber min={1} max={10000} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="usesPerCode" label={t('usesPerCode')} rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item label={t('permanent')}>
+            <Switch checked={permanent} onChange={setPermanent} />
+          </Form.Item>
+          {!permanent && <Form.Item name="expiresAt" label={t('expiresAt')}><DatePicker showTime style={{ width: '100%' }} /></Form.Item>}
           <Button htmlType="submit" type="primary" shape="round" loading={mutation.isPending}>{t('create')}</Button>
         </Form>
       </Modal>
@@ -244,14 +414,16 @@ function CardsPage() {
         dataSource={query.data || []}
         loading={query.isLoading}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
+          { title: t('id'), dataIndex: 'id', width: 76 },
           { title: t('cardCode'), dataIndex: 'codeMask' },
-          { title: t('remainingUses'), dataIndex: 'remainingUses' },
-          { title: 'Total', dataIndex: 'totalUses' },
-          { title: t('status'), dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
+          { title: t('service'), render: (_, row: any) => row.serviceConfig?.displayName || '-' },
+          { title: t('usedAndTotal'), render: (_, row: any) => `${row.remainingUses}/${row.totalUses}` },
+          { title: t('expiresAt'), dataIndex: 'expiresAt', render: (value) => value ? formatDateTime(value) : t('noExpiry') },
+          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
+          { title: t('status'), dataIndex: 'status', render: (value) => <Tag>{t(value)}</Tag> },
           {
-            title: t('status'),
-            render: (_, row) => (
+            title: t('actions'),
+            render: (_, row: any) => (
               <Select
                 value={row.status}
                 style={{ width: 120 }}
@@ -277,13 +449,16 @@ function OrdersPage() {
         dataSource={query.data || []}
         loading={query.isLoading}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
-          { title: 'Order No', dataIndex: 'orderNo' },
+          { title: t('id'), dataIndex: 'id', width: 76 },
+          { title: t('orderNo'), dataIndex: 'orderNo' },
+          { title: t('service'), render: (_, row: any) => row.serviceConfig?.displayName || '-' },
           { title: t('phoneNumber'), dataIndex: 'phoneNumber' },
           { title: t('verificationCode'), dataIndex: 'verificationCode' },
-          { title: 'Provider', dataIndex: 'providerCode' },
-          { title: 'Cost', dataIndex: 'cost' },
-          { title: t('status'), dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
+          { title: t('supplierOrderId'), dataIndex: 'supplierOrderId' },
+          { title: t('cost'), dataIndex: 'cost' },
+          { title: t('status'), dataIndex: 'status', render: (value) => <Tag>{t(value)}</Tag> },
+          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
+          { title: t('updatedAt'), dataIndex: 'updatedAt', render: formatDateTime },
         ]}
       />
     </div>
@@ -301,14 +476,56 @@ function AuditPage() {
         dataSource={query.data || []}
         loading={query.isLoading}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
-          { title: 'Action', dataIndex: 'action' },
-          { title: 'Resource', dataIndex: 'resourceType' },
+          { title: t('id'), dataIndex: 'id', width: 76 },
+          { title: t('actions'), dataIndex: 'action' },
+          { title: t('resource'), dataIndex: 'resourceType' },
           { title: 'IP', dataIndex: 'ip' },
-          { title: 'Created', dataIndex: 'createdAt' },
+          { title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime },
         ]}
       />
     </div>
+  );
+}
+
+function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
+  const [form] = Form.useForm();
+  const [msg, contextHolder] = message.useMessage();
+  const mutation = useMutation({
+    mutationFn: (values: { oldPassword: string; newPassword: string }) => changePassword(values.oldPassword, values.newPassword),
+    onSuccess: () => {
+      msg.success(t('passwordChanged'));
+      form.resetFields();
+      onClose();
+    },
+    onError: (error: Error) => msg.error(error.message),
+  });
+  return (
+    <Modal title={t('changePassword')} open={open} footer={null} onCancel={onClose}>
+      {contextHolder}
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(values) => {
+          if (values.newPassword !== values.confirmPassword) {
+            msg.error(t('passwordMismatch'));
+            return;
+          }
+          mutation.mutate(values);
+        }}
+      >
+        <Form.Item name="oldPassword" label={t('oldPassword')} rules={[{ required: true }]}>
+          <Input.Password />
+        </Form.Item>
+        <Form.Item name="newPassword" label={t('newPassword')} rules={[{ required: true, min: 8 }]}>
+          <Input.Password />
+        </Form.Item>
+        <Form.Item name="confirmPassword" label={t('confirmPassword')} rules={[{ required: true }]}>
+          <Input.Password />
+        </Form.Item>
+        <Button htmlType="submit" type="primary" shape="round" loading={mutation.isPending}>{t('save')}</Button>
+      </Form>
+    </Modal>
   );
 }
 
@@ -320,4 +537,8 @@ function PageHead({ title, onCreate }: { title: string; onCreate?: () => void })
       <Space>{onCreate && <Button type="primary" shape="round" onClick={onCreate}>{t('create')}</Button>}</Space>
     </div>
   );
+}
+
+function toPlatformKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }

@@ -48,3 +48,21 @@ func (s *AdminService) Login(username, password string) (*LoginResult, error) {
 	}
 	return &LoginResult{Token: token, Admin: admin}, nil
 }
+
+func (s *AdminService) ChangePassword(adminID uint, oldPassword, newPassword string) error {
+	if len(newPassword) < 8 {
+		return errors.New("new password must be at least 8 characters")
+	}
+	var admin model.Admin
+	if err := s.db.First(&admin, adminID).Error; err != nil {
+		return errors.New("admin account not found")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(oldPassword)); err != nil {
+		return errors.New("old password is incorrect")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return s.db.Model(&admin).Update("password_hash", string(hash)).Error
+}

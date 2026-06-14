@@ -1,12 +1,42 @@
 import { api, unwrap } from './client';
-import type { CardBatch, CardCode, LoginResult, ReceiveOrder, ServiceConfig } from '../types/api';
+import type {
+  CardBatch,
+  CardCode,
+  LoginResult,
+  ProviderCountry,
+  ProviderPrice,
+  ProviderService,
+  ProviderStock,
+  ReceiveOrder,
+  ServiceConfig,
+} from '../types/api';
 
 export function login(username: string, password: string) {
   return unwrap<LoginResult>(api.post('/admin/auth/login', { username, password }));
 }
 
+export function changePassword(oldPassword: string, newPassword: string) {
+  return unwrap<{ changed: boolean }>(api.post('/admin/auth/password', { oldPassword, newPassword }));
+}
+
 export function listProviders() {
   return unwrap<any[]>(api.get('/admin/providers'));
+}
+
+export function listProviderCountries(provider: string) {
+  return unwrap<ProviderCountry[]>(api.get(`/admin/providers/${provider}/countries`));
+}
+
+export function listProviderServices(provider: string, countryId?: string) {
+  return unwrap<ProviderService[]>(api.get(`/admin/providers/${provider}/services`, { params: { countryId } }));
+}
+
+export function getProviderPrice(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
+  return unwrap<ProviderPrice>(api.get(`/admin/providers/${provider}/price`, { params }));
+}
+
+export function getProviderStock(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
+  return unwrap<ProviderStock>(api.get(`/admin/providers/${provider}/stock`, { params }));
 }
 
 export function listServiceConfigs() {

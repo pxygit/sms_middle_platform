@@ -35,6 +35,7 @@ func main() {
 	admins := service.NewAdminService(db, cfg)
 	audit := service.NewAuditService(db)
 	catalog := service.NewCatalogService(db)
+	meta := service.NewProviderMetadataService(registry)
 	cards := service.NewCardService(db, cfg.CardExportDir)
 	orders := service.NewOrderService(db, registry)
 
@@ -46,6 +47,7 @@ func main() {
 		Admins:  admins,
 		Audit:   audit,
 		Catalog: catalog,
+		Meta:    meta,
 		Cards:   cards,
 		Orders:  orders,
 	})

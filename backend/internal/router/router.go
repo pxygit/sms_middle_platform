@@ -17,6 +17,7 @@ type Services struct {
 	Admins  *service.AdminService
 	Audit   *service.AuditService
 	Catalog *service.CatalogService
+	Meta    *service.ProviderMetadataService
 	Cards   *service.CardService
 	Orders  *service.OrderService
 }
@@ -58,12 +59,17 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		adminAPI.POST("/auth/login", middleware.RateLimit(20, time.Minute), authHandler.Login)
 
 		protected := adminAPI.Group("", middleware.AdminAuth(cfg.JWTSecret))
-		catalogHandler := adminhandler.NewCatalogHandler(services.Catalog, services.Audit)
+		catalogHandler := adminhandler.NewCatalogHandler(services.Catalog, services.Meta, services.Audit)
 		cardHandler := adminhandler.NewCardHandler(services.Cards, services.Audit)
 		orderHandler := adminhandler.NewOrderHandler(services.Orders, services.Audit)
 		auditHandler := adminhandler.NewAuditHandler(services.Audit)
 
+		protected.POST("/auth/password", authHandler.ChangePassword)
 		protected.GET("/providers", catalogHandler.Providers)
+		protected.GET("/providers/:provider/countries", catalogHandler.ProviderCountries)
+		protected.GET("/providers/:provider/services", catalogHandler.ProviderServices)
+		protected.GET("/providers/:provider/price", catalogHandler.ProviderPrice)
+		protected.GET("/providers/:provider/stock", catalogHandler.ProviderStock)
 		protected.GET("/service-configs", catalogHandler.ListServiceConfigs)
 		protected.POST("/service-configs", catalogHandler.CreateServiceConfig)
 		protected.PATCH("/service-configs/:id", catalogHandler.UpdateServiceConfig)

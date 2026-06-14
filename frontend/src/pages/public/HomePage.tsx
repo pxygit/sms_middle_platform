@@ -100,7 +100,7 @@ export function HomePage() {
           <span>{t('brand')}</span>
         </div>
         <Space>
-          <Button href="/admin/login" shape="round" type="text">
+          <Button href={localStorage.getItem('adminToken') ? '/admin' : '/admin/login'} shape="round" type="text">
             {t('admin')}
           </Button>
           <PreferenceBar />

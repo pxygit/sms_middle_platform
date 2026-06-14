@@ -52,10 +52,55 @@ type CancelResult struct {
 	Raw     json.RawMessage
 }
 
+type ProviderCountry struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	ShortName string `json:"shortName"`
+	Region    string `json:"region"`
+}
+
+type ProviderService struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Favourite int    `json:"favourite"`
+}
+
+type ProviderPriceInput struct {
+	CountryID string
+	ServiceID string
+	PoolID    string
+}
+
+type ProviderPrice struct {
+	Pool        int             `json:"pool"`
+	HighPrice   string          `json:"highPrice"`
+	Price       string          `json:"price"`
+	SuccessRate float64         `json:"successRate"`
+	Raw         json.RawMessage `json:"-"`
+}
+
+type ProviderStockInput struct {
+	CountryID string
+	ServiceID string
+	PoolID    string
+}
+
+type ProviderStock struct {
+	Amount int             `json:"amount"`
+	Raw    json.RawMessage `json:"-"`
+}
+
 type SMSProvider interface {
 	Name() string
 	GetBalance(ctx context.Context) (*ProviderBalance, error)
 	RequestNumber(ctx context.Context, input RequestNumberInput) (*RequestNumberResult, error)
 	CheckSMS(ctx context.Context, input CheckSMSInput) (*SMSResult, error)
 	CancelNumber(ctx context.Context, input CancelNumberInput) (*CancelResult, error)
+}
+
+type MetadataProvider interface {
+	GetCountries(ctx context.Context) ([]ProviderCountry, error)
+	GetServices(ctx context.Context, countryID string) ([]ProviderService, error)
+	GetPrice(ctx context.Context, input ProviderPriceInput) (*ProviderPrice, error)
+	GetStock(ctx context.Context, input ProviderStockInput) (*ProviderStock, error)
 }

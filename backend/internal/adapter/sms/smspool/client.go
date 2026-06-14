@@ -39,6 +39,129 @@ func (c *Client) Name() string {
 	return "smspool"
 }
 
+func (c *Client) GetCountries(ctx context.Context) ([]sms.ProviderCountry, error) {
+	raw, status, err := c.get(ctx, "/country/retrieve_all", nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, parseError(raw)
+	}
+	var out []struct {
+		ID        int    `json:"ID"`
+		Name      string `json:"name"`
+		ShortName string `json:"short_name"`
+		Region    string `json:"region"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	countries := make([]sms.ProviderCountry, 0, len(out))
+	for _, item := range out {
+		countries = append(countries, sms.ProviderCountry{
+			ID:        item.ID,
+			Name:      item.Name,
+			ShortName: item.ShortName,
+			Region:    item.Region,
+		})
+	}
+	return countries, nil
+}
+
+func (c *Client) GetServices(ctx context.Context, countryID string) ([]sms.ProviderService, error) {
+	query := url.Values{}
+	if countryID != "" {
+		query.Set("country", countryID)
+	}
+	raw, status, err := c.get(ctx, "/service/retrieve_all", query)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, parseError(raw)
+	}
+	var out []struct {
+		ID        int    `json:"ID"`
+		Name      string `json:"name"`
+		Favourite int    `json:"favourite"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	services := make([]sms.ProviderService, 0, len(out))
+	for _, item := range out {
+		services = append(services, sms.ProviderService{
+			ID:        item.ID,
+			Name:      item.Name,
+			Favourite: item.Favourite,
+		})
+	}
+	return services, nil
+}
+
+func (c *Client) GetPrice(ctx context.Context, input sms.ProviderPriceInput) (*sms.ProviderPrice, error) {
+	form := url.Values{
+		"key":     {c.apiKey},
+		"country": {input.CountryID},
+		"service": {input.ServiceID},
+	}
+	if input.PoolID != "" {
+		form.Set("pool", input.PoolID)
+	}
+	raw, status, err := c.postForm(ctx, "/request/price", form)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, parseError(raw)
+	}
+	var out struct {
+		Pool        int     `json:"pool"`
+		HighPrice   string  `json:"high_price"`
+		Price       string  `json:"price"`
+		SuccessRate float64 `json:"success_rate"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return &sms.ProviderPrice{
+		Pool:        out.Pool,
+		HighPrice:   out.HighPrice,
+		Price:       out.Price,
+		SuccessRate: out.SuccessRate,
+		Raw:         raw,
+	}, nil
+}
+
+func (c *Client) GetStock(ctx context.Context, input sms.ProviderStockInput) (*sms.ProviderStock, error) {
+	form := url.Values{
+		"key":     {c.apiKey},
+		"country": {input.CountryID},
+		"service": {input.ServiceID},
+	}
+	if input.PoolID != "" {
+		form.Set("pool", input.PoolID)
+	}
+	raw, status, err := c.postForm(ctx, "/sms/stock", form)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, parseError(raw)
+	}
+	var out struct {
+		Success int `json:"success"`
+		Amount  int `json:"amount"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	if out.Success != 1 {
+		return nil, sms.NewProviderError(sms.ErrProviderRejected, "failed to retrieve stock")
+	}
+	return &sms.ProviderStock{Amount: out.Amount, Raw: raw}, nil
+}
+
 func (c *Client) GetBalance(ctx context.Context) (*sms.ProviderBalance, error) {
 	var out struct {
 		Balance string `json:"balance"`
@@ -206,6 +329,9 @@ func (c *Client) postForm(ctx context.Context, path string, form url.Values) ([]
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Accept", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -219,6 +345,35 @@ func (c *Client) postForm(ctx context.Context, path string, form url.Values) ([]
 		return nil, resp.StatusCode, err
 	}
 	c.log(path, form, resp.StatusCode, resp.StatusCode < 400, "", "", time.Since(start), responseBody)
+	return responseBody, resp.StatusCode, nil
+}
+
+func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte, int, error) {
+	target := c.baseURL + path
+	if len(query) > 0 {
+		target += "?" + query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	start := time.Now()
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.log(path, query, 0, false, "", err.Error(), time.Since(start), nil)
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.log(path, query, resp.StatusCode, false, "", err.Error(), time.Since(start), responseBody)
+		return nil, resp.StatusCode, err
+	}
+	c.log(path, query, resp.StatusCode, resp.StatusCode < 400, "", "", time.Since(start), responseBody)
 	return responseBody, resp.StatusCode, nil
 }
 
