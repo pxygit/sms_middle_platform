@@ -27,6 +27,17 @@ go.work.sum
 # env file
 .env
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.tmp/
+frontend/.vite/
+frontend/vite-cache/
+
+# Runtime storage
+backend/storage/
+storage/
+
 # Editor/IDE
 # .idea/
 # .vscode/
