@@ -110,6 +110,10 @@ export interface ProviderStock {
   amount: number;
 }
 
+export interface ProviderBalance {
+  balance: string;
+}
+
 export interface DashboardRank {
   key: string;
   name: string;

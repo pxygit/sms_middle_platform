@@ -4,6 +4,7 @@ import type {
   CardCode,
   DashboardStats,
   LoginResult,
+  ProviderBalance,
   ProviderCountry,
   ProviderPrice,
   ProviderService,
@@ -38,6 +39,10 @@ export function getProviderPrice(provider: string, params: { countryId?: string;
 
 export function getProviderStock(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
   return unwrap<ProviderStock>(api.get(`/admin/providers/${provider}/stock`, { params }));
+}
+
+export function getProviderBalance(provider: string) {
+  return unwrap<ProviderBalance>(api.get(`/admin/providers/${provider}/balance`));
 }
 
 export function listServiceConfigs() {

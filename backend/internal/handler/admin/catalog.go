@@ -131,3 +131,12 @@ func (h *CatalogHandler) ProviderStock(c *gin.Context) {
 	}
 	response.OK(c, stock)
 }
+
+func (h *CatalogHandler) ProviderBalance(c *gin.Context) {
+	balance, err := h.meta.Balance(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, balance)
+}

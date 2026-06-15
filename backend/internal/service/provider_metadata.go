@@ -47,6 +47,14 @@ func (s *ProviderMetadataService) Stock(ctx context.Context, providerCode string
 	return provider.GetStock(ctx, input)
 }
 
+func (s *ProviderMetadataService) Balance(ctx context.Context, providerCode string) (*sms.ProviderBalance, error) {
+	provider, err := s.registry.Get(providerCode)
+	if err != nil {
+		return nil, err
+	}
+	return provider.GetBalance(ctx)
+}
+
 func (s *ProviderMetadataService) metadataProvider(providerCode string) (sms.MetadataProvider, error) {
 	provider, err := s.registry.Get(providerCode)
 	if err != nil {

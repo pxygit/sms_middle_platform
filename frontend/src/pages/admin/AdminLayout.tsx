@@ -52,6 +52,7 @@ import {
   deleteCardCode,
   downloadCardBatch,
   getDashboardStats,
+  getProviderBalance,
   getProviderPrice,
   getProviderStock,
   listAuditLogs,
@@ -152,7 +153,27 @@ export function AdminLayout() {
 
 function Dashboard() {
   const { t } = useTranslation();
+  const [balances, setBalances] = useState<Record<string, { balance?: string; error?: string; checkedAt?: string }>>({});
   const stats = useQuery({ queryKey: ['dashboard'], queryFn: getDashboardStats, refetchInterval: 30000 });
+  const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
+  const balanceMutation = useMutation({
+    mutationFn: async (providerCode?: string) => {
+      const targets = providerCode ? (providers.data || []).filter((provider) => provider.code === providerCode) : providers.data || [];
+      const checkedAt = new Date().toISOString();
+      const results = await Promise.all(
+        targets.map(async (provider) => {
+          try {
+            const data = await getProviderBalance(provider.code);
+            return [provider.code, { balance: data.balance, checkedAt }] as const;
+          } catch (error: any) {
+            return [provider.code, { error: error?.message || t('balanceCheckFailed'), checkedAt }] as const;
+          }
+        }),
+      );
+      return Object.fromEntries(results);
+    },
+    onSuccess: (result) => setBalances((current) => ({ ...current, ...result })),
+  });
   const data = stats.data;
   return (
     <div className="admin-page">
@@ -172,12 +193,65 @@ function Dashboard() {
         <Stat title={t('activeOrders')} value={data?.activeOrders || 0} tone="sky" />
         <Stat title={t('availableCards')} value={data?.availableCards || 0} tone="mint" />
       </div>
+      <BalancePanel
+        providers={providers.data || []}
+        balances={balances}
+        loading={providers.isLoading || balanceMutation.isPending}
+        onCheck={(providerCode) => balanceMutation.mutate(providerCode)}
+      />
       <div className="dashboard-grid">
         <RankPanel title={t('providerRank')} rows={data?.providerRanking || []} loading={stats.isLoading} />
         <RankPanel title={t('serviceRank')} rows={data?.serviceRanking || []} loading={stats.isLoading} />
         <RankPanel title={t('statusOverview')} rows={data?.statusSummary || []} loading={stats.isLoading} translateName />
       </div>
     </div>
+  );
+}
+
+function BalancePanel({
+  providers,
+  balances,
+  loading,
+  onCheck,
+}: {
+  providers: any[];
+  balances: Record<string, { balance?: string; error?: string; checkedAt?: string }>;
+  loading: boolean;
+  onCheck: (providerCode?: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="balance-panel">
+      <div className="rank-head">
+        <div>
+          <h2>{t('providerBalance')}</h2>
+          <small>{t('providerBalanceHelp')}</small>
+        </div>
+        <Button shape="round" loading={loading} onClick={() => onCheck()}>
+          {t('checkAllBalances')}
+        </Button>
+      </div>
+      <div className="balance-grid">
+        {providers.length === 0 ? (
+          <div className="rank-empty">{t('noData')}</div>
+        ) : (
+          providers.map((provider) => {
+            const result = balances[provider.code] || {};
+            return (
+              <div className="balance-card" key={provider.code}>
+                <div>
+                  <span>{provider.name || provider.code}</span>
+                  <strong>{result.error ? t('checkFailed') : result.balance || '--'}</strong>
+                  {result.checkedAt && <small>{formatDateTime(result.checkedAt)}</small>}
+                  {result.error && <em>{result.error}</em>}
+                </div>
+                <Button size="small" shape="circle" icon={<RefreshCw size={15} />} loading={loading} onClick={() => onCheck(provider.code)} />
+              </div>
+            );
+          })
+        )}
+      </div>
+    </section>
   );
 }
 
