@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Alert, Button, Input, Space, Spin, Tag, message } from 'antd';
 import { Copy, History, KeyRound, Phone, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { cancelOrder, createOrder, getHistory, getOrder, verifyCard } from '../../api/public';
+import { cancelOrder, createOrder, getHistory, getOrder, recordVisit, verifyCard } from '../../api/public';
 import type { CardVerifyResult, ReceiveOrder } from '../../types/api';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { localizedError } from '../../utils/errors';
@@ -51,6 +51,10 @@ export function HomePage() {
     enabled: canPoll,
     refetchInterval: canPoll ? 5000 : false,
   });
+
+  useEffect(() => {
+    void recordVisit(window.location.pathname).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (orderQuery.data) setOrder(orderQuery.data);

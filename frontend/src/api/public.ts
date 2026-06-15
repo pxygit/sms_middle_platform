@@ -20,3 +20,7 @@ export function cancelOrder(orderNo: string, cardCode: string) {
 export function getHistory(cardCode: string) {
   return unwrap<ReceiveOrder[]>(api.get('/public/cards/history', { params: { cardCode } }));
 }
+
+export function recordVisit(path = '/') {
+  return unwrap<{ recorded: boolean }>(api.post('/public/visits', { path }));
+}

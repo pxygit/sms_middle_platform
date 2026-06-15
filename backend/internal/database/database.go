@@ -32,6 +32,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.ReceiveOrder{},
 		&model.SupplierRequestLog{},
 		&model.AuditLog{},
+		&model.SiteVisit{},
 	)
 }
 

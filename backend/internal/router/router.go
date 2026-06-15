@@ -14,12 +14,13 @@ import (
 )
 
 type Services struct {
-	Admins  *service.AdminService
-	Audit   *service.AuditService
-	Catalog *service.CatalogService
-	Meta    *service.ProviderMetadataService
-	Cards   *service.CardService
-	Orders  *service.OrderService
+	Admins    *service.AdminService
+	Audit     *service.AuditService
+	Catalog   *service.CatalogService
+	Meta      *service.ProviderMetadataService
+	Cards     *service.CardService
+	Orders    *service.OrderService
+	Dashboard *service.DashboardService
 }
 
 func New(cfg config.Config, services Services) *gin.Engine {
@@ -46,11 +47,13 @@ func New(cfg config.Config, services Services) *gin.Engine {
 	{
 		cardHandler := publichandler.NewCardHandler(services.Cards)
 		orderHandler := publichandler.NewOrderHandler(services.Orders)
+		visitHandler := publichandler.NewVisitHandler(services.Dashboard)
 		publicAPI.POST("/cards/verify", cardHandler.Verify)
 		publicAPI.POST("/orders", orderHandler.Create)
 		publicAPI.GET("/orders/:orderNo", orderHandler.Get)
 		publicAPI.POST("/orders/:orderNo/cancel", orderHandler.Cancel)
 		publicAPI.GET("/cards/history", orderHandler.History)
+		publicAPI.POST("/visits", visitHandler.Record)
 	}
 
 	adminAPI := v1.Group("/admin")
@@ -63,8 +66,10 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		cardHandler := adminhandler.NewCardHandler(services.Cards, services.Audit)
 		orderHandler := adminhandler.NewOrderHandler(services.Orders, services.Audit)
 		auditHandler := adminhandler.NewAuditHandler(services.Audit)
+		dashboardHandler := adminhandler.NewDashboardHandler(services.Dashboard)
 
 		protected.POST("/auth/password", authHandler.ChangePassword)
+		protected.GET("/dashboard", dashboardHandler.Stats)
 		protected.GET("/providers", catalogHandler.Providers)
 		protected.GET("/providers/:provider/countries", catalogHandler.ProviderCountries)
 		protected.GET("/providers/:provider/services", catalogHandler.ProviderServices)

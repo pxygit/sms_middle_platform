@@ -51,6 +51,7 @@ import {
   deleteCardBatch,
   deleteCardCode,
   downloadCardBatch,
+  getDashboardStats,
   getProviderPrice,
   getProviderStock,
   listAuditLogs,
@@ -67,7 +68,7 @@ import {
 } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { formatDateTime } from '../../utils/format';
-import type { ProviderCountry, ProviderService } from '../../types/api';
+import type { DashboardRank, ProviderCountry, ProviderService } from '../../types/api';
 import { statusColor } from '../../utils/status';
 
 const { Header, Sider, Content } = Layout;
@@ -151,27 +152,70 @@ export function AdminLayout() {
 
 function Dashboard() {
   const { t } = useTranslation();
-  const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
-  const services = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
-  const orders = useQuery({ queryKey: ['orders'], queryFn: listOrders });
+  const stats = useQuery({ queryKey: ['dashboard'], queryFn: getDashboardStats, refetchInterval: 30000 });
+  const data = stats.data;
   return (
     <div className="admin-page">
-      <h1>{t('dashboard')}</h1>
-      <div className="admin-stat-grid">
-        <Stat title={t('providers')} value={providers.data?.length || 0} />
-        <Stat title={t('serviceConfigs')} value={services.data?.length || 0} />
-        <Stat title={t('orders')} value={orders.data?.length || 0} />
+      <PageHead title={t('dashboard')} onRefresh={() => stats.refetch()} />
+      <div className="dashboard-hero">
+        <div>
+          <span>{t('dashboardToday')}</span>
+          <h2>{t('dashboardTitle')}</h2>
+        </div>
+        <Tag color="cyan">{t('updatedAt')}: {formatDateTime(new Date().toISOString())}</Tag>
+      </div>
+      <div className="admin-stat-grid dashboard-stat-grid">
+        <Stat title={t('completedOrders')} value={data?.totalCompletedOrders || 0} tone="mint" />
+        <Stat title={t('todayCompleted')} value={data?.todayCompletedOrders || 0} tone="sky" />
+        <Stat title={t('homeVisits')} value={data?.totalVisits || 0} tone="sun" />
+        <Stat title={t('todayVisits')} value={data?.todayVisits || 0} tone="violet" />
+        <Stat title={t('activeOrders')} value={data?.activeOrders || 0} tone="sky" />
+        <Stat title={t('availableCards')} value={data?.availableCards || 0} tone="mint" />
+      </div>
+      <div className="dashboard-grid">
+        <RankPanel title={t('providerRank')} rows={data?.providerRanking || []} loading={stats.isLoading} />
+        <RankPanel title={t('serviceRank')} rows={data?.serviceRanking || []} loading={stats.isLoading} />
+        <RankPanel title={t('statusOverview')} rows={data?.statusSummary || []} loading={stats.isLoading} translateName />
       </div>
     </div>
   );
 }
 
-function Stat({ title, value }: { title: string; value: number }) {
+function Stat({ title, value, tone = 'mint' }: { title: string; value: number; tone?: string }) {
   return (
-    <div className="stat-card">
+    <div className={`stat-card stat-${tone}`}>
       <span>{title}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function RankPanel({ title, rows, loading, translateName = false }: { title: string; rows: DashboardRank[]; loading: boolean; translateName?: boolean }) {
+  const { t } = useTranslation();
+  const max = Math.max(...rows.map((row) => row.count), 1);
+  return (
+    <section className="rank-panel">
+      <div className="rank-head">
+        <h2>{title}</h2>
+        {loading && <Tag color="processing">{t('loading')}</Tag>}
+      </div>
+      {rows.length === 0 ? (
+        <div className="rank-empty">{t('noData')}</div>
+      ) : (
+        rows.map((row, index) => (
+          <div className="rank-row" key={`${row.key}-${index}`}>
+            <div className="rank-row-main">
+              <span>{index + 1}</span>
+              <b>{translateName ? t(row.name) : row.name}</b>
+              <strong>{row.count}</strong>
+            </div>
+            <div className="rank-track">
+              <i style={{ width: `${Math.max((row.count / max) * 100, 8)}%` }} />
+            </div>
+          </div>
+        ))
+      )}
+    </section>
   );
 }
 

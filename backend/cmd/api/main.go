@@ -38,18 +38,20 @@ func main() {
 	meta := service.NewProviderMetadataService(registry)
 	cards := service.NewCardService(db, cfg.CardExportDir, cfg.DataEncryptionKey)
 	orders := service.NewOrderService(db, registry)
+	dashboard := service.NewDashboardService(db)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	job.NewPoller(orders, cfg.OrderPollInterval).Start(ctx)
 
 	engine := router.New(cfg, router.Services{
-		Admins:  admins,
-		Audit:   audit,
-		Catalog: catalog,
-		Meta:    meta,
-		Cards:   cards,
-		Orders:  orders,
+		Admins:    admins,
+		Audit:     audit,
+		Catalog:   catalog,
+		Meta:      meta,
+		Cards:     cards,
+		Orders:    orders,
+		Dashboard: dashboard,
 	})
 	if err := engine.Run(cfg.HTTPAddr); err != nil {
 		log.Fatalf("run server: %v", err)

@@ -165,3 +165,13 @@ type AuditLog struct {
 }
 
 func (AuditLog) TableName() string { return "sys_audit_logs" }
+
+type SiteVisit struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Path      string    `gorm:"size:128;index;not null" json:"path"`
+	IP        string    `gorm:"size:64" json:"ip"`
+	UserAgent string    `gorm:"size:255" json:"userAgent"`
+	CreatedAt time.Time `gorm:"index" json:"createdAt"`
+}
+
+func (SiteVisit) TableName() string { return "sys_site_visits" }

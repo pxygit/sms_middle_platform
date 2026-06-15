@@ -109,3 +109,22 @@ export interface ProviderPrice {
 export interface ProviderStock {
   amount: number;
 }
+
+export interface DashboardRank {
+  key: string;
+  name: string;
+  count: number;
+}
+
+export interface DashboardStats {
+  totalCompletedOrders: number;
+  todayCompletedOrders: number;
+  activeOrders: number;
+  todayOrders: number;
+  todayVisits: number;
+  totalVisits: number;
+  availableCards: number;
+  providerRanking: DashboardRank[];
+  serviceRanking: DashboardRank[];
+  statusSummary: DashboardRank[];
+}
