@@ -262,6 +262,7 @@ function ServicesPage() {
         rowKey="id"
         dataSource={rows}
         loading={query.isLoading}
+        pagination={tablePagination(t)}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
           centerColumn({ title: t('serviceKey'), dataIndex: 'targetPlatform', width: 260, className: 'wide-key-column' }),
@@ -270,7 +271,7 @@ function ServicesPage() {
           centerColumn({ title: t('service'), dataIndex: 'displayName' }),
           centerColumn({ title: t('providerServiceId'), dataIndex: 'providerServiceId' }),
           centerColumn({ title: t('maxPrice'), dataIndex: 'maxPrice' }),
-          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
           centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
           centerColumn({
             title: t('actions'),
@@ -412,6 +413,7 @@ function BatchesPage() {
         rowKey="id"
         dataSource={rows}
         loading={batches.isLoading}
+        pagination={tablePagination(t)}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
           centerColumn({ title: t('batchName'), dataIndex: 'name' }),
@@ -419,9 +421,9 @@ function BatchesPage() {
           centerColumn({ title: t('serviceKey'), width: 260, render: (_: unknown, row: any) => row.serviceKey }),
           centerColumn({ title: t('quantity'), dataIndex: 'quantity' }),
           centerColumn({ title: t('usesPerCode'), dataIndex: 'usesPerCode' }),
-          centerColumn({ title: t('expiresAt'), dataIndex: 'expiresAt', render: (value: string) => value ? formatDateTime(value) : t('noExpiry') }),
-          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
-          centerColumn({ title: t('exportedAt'), dataIndex: 'exportedAt', render: formatDateTime }),
+          centerColumn({ title: t('expiresAt'), dataIndex: 'expiresAt', render: (value: string) => value ? formatDateTime(value) : t('noExpiry'), sorter: (a: any, b: any) => dateSorter(a.expiresAt, b.expiresAt) }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
+          centerColumn({ title: t('exportedAt'), dataIndex: 'exportedAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.exportedAt, b.exportedAt) }),
           centerColumn({
             title: t('actions'),
             render: (_: unknown, row: any) => (
@@ -502,6 +504,7 @@ function CardsPage() {
         rowKey="id"
         dataSource={rows}
         loading={query.isLoading}
+        pagination={tablePagination(t)}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
           centerColumn({
@@ -513,8 +516,8 @@ function CardsPage() {
           }),
           centerColumn({ title: t('serviceKey'), width: 260, render: (_: unknown, row: any) => row.serviceConfig?.targetPlatform || '-' }),
           centerColumn({ title: t('usedAndTotal'), render: (_: unknown, row: any) => `${row.remainingUses}/${row.totalUses}` }),
-          centerColumn({ title: t('expiresAt'), dataIndex: 'expiresAt', render: (value: string) => value ? formatDateTime(value) : t('noExpiry') }),
-          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
+          centerColumn({ title: t('expiresAt'), dataIndex: 'expiresAt', render: (value: string) => value ? formatDateTime(value) : t('noExpiry'), sorter: (a: any, b: any) => dateSorter(a.expiresAt, b.expiresAt) }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
           centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
           centerColumn({
             title: t('actions'),
@@ -556,6 +559,7 @@ function OrdersPage() {
         rowKey="id"
         dataSource={rows}
         loading={query.isLoading}
+        pagination={tablePagination(t)}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
           centerColumn({ title: t('orderNo'), dataIndex: 'orderNo' }),
@@ -565,8 +569,8 @@ function OrdersPage() {
           centerColumn({ title: t('supplierOrderId'), dataIndex: 'supplierOrderId' }),
           centerColumn({ title: t('cost'), dataIndex: 'cost' }),
           centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
-          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
-          centerColumn({ title: t('updatedAt'), dataIndex: 'updatedAt', render: formatDateTime }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
+          centerColumn({ title: t('updatedAt'), dataIndex: 'updatedAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.updatedAt, b.updatedAt) }),
         ]}
       />
     </div>
@@ -587,12 +591,13 @@ function AuditPage() {
         rowKey="id"
         dataSource={rows}
         loading={query.isLoading}
+        pagination={tablePagination(t)}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
           centerColumn({ title: t('actions'), dataIndex: 'action' }),
           centerColumn({ title: t('resource'), dataIndex: 'resourceType' }),
           centerColumn({ title: 'IP', dataIndex: 'ip' }),
-          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
         ]}
       />
     </div>
@@ -749,6 +754,20 @@ function StatusTag({ status }: { status: string }) {
 
 function centerColumn(column: any) {
   return { align: 'center' as const, ...column };
+}
+
+function tablePagination(t: (key: string, options?: any) => string) {
+  return {
+    showSizeChanger: true,
+    pageSizeOptions: [10, 20, 50, 100],
+    showTotal: (total: number) => t('tableTotal', { total }),
+  };
+}
+
+function dateSorter(left?: string | null, right?: string | null) {
+  const leftTime = left ? new Date(left).getTime() : 0;
+  const rightTime = right ? new Date(right).getTime() : 0;
+  return leftTime - rightTime;
 }
 
 function serviceKeyById(services: any[], id: number) {
