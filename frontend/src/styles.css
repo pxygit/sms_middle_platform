@@ -408,14 +408,24 @@ input {
 }
 
 .admin-filter-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px;
+  display: inline-flex;
+  align-items: center;
+  flex-direction: row-reverse;
+  gap: 8px;
+  width: 32px;
+  overflow: hidden;
+  padding: 0;
   border: 1px solid rgba(20, 184, 166, 0.12);
-  border-radius: 18px;
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.68);
   box-shadow: 0 14px 34px rgba(15, 118, 110, 0.06);
   backdrop-filter: blur(12px);
+  transition: width 0.2s ease, padding 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-filter-bar.is-open {
+  width: min(360px, 42vw);
+  padding-left: 10px;
 }
 
 :root[data-theme="dark"] .admin-filter-bar {
@@ -425,8 +435,12 @@ input {
 }
 
 .admin-filter-bar .ant-input-affix-wrapper {
-  max-width: 360px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
   border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .admin-filter-bar svg {
@@ -523,11 +537,11 @@ input {
   }
 
   .admin-filter-bar {
-    justify-content: stretch;
+    max-width: 100%;
   }
 
-  .admin-filter-bar .ant-input-affix-wrapper {
-    max-width: none;
+  .admin-filter-bar.is-open {
+    width: min(320px, 100%);
   }
 
   .public-shell {

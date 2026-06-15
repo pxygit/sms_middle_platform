@@ -255,8 +255,7 @@ function ServicesPage() {
 
   return (
     <div className="admin-page">
-      <PageHead title={t('serviceConfigs')} onCreate={openCreate} onRefresh={() => query.refetch()} />
-      <SearchPanel value={keyword} onChange={setKeyword} />
+      <PageHead title={t('serviceConfigs')} searchValue={keyword} onSearchChange={setKeyword} onCreate={openCreate} onRefresh={() => query.refetch()} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
@@ -406,8 +405,7 @@ function BatchesPage() {
 
   return (
     <div className="admin-page">
-      <PageHead title={t('cardBatches')} onCreate={() => setOpen(true)} onRefresh={() => batches.refetch()} />
-      <SearchPanel value={keyword} onChange={setKeyword} />
+      <PageHead title={t('cardBatches')} searchValue={keyword} onSearchChange={setKeyword} onCreate={() => setOpen(true)} onRefresh={() => batches.refetch()} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
@@ -497,8 +495,7 @@ function CardsPage() {
   return (
     <div className="admin-page">
       {contextHolder}
-      <PageHead title={t('cardCodes')} onRefresh={() => query.refetch()} />
-      <SearchPanel value={keyword} onChange={setKeyword} />
+      <PageHead title={t('cardCodes')} searchValue={keyword} onSearchChange={setKeyword} onRefresh={() => query.refetch()} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
@@ -552,8 +549,7 @@ function OrdersPage() {
   const rows = filterRows(query.data || [], keyword);
   return (
     <div className="admin-page">
-      <PageHead title={t('orders')} onRefresh={() => query.refetch()} />
-      <SearchPanel value={keyword} onChange={setKeyword} />
+      <PageHead title={t('orders')} searchValue={keyword} onSearchChange={setKeyword} onRefresh={() => query.refetch()} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
@@ -584,8 +580,7 @@ function AuditPage() {
   const rows = filterRows(query.data || [], keyword);
   return (
     <div className="admin-page">
-      <PageHead title={t('auditLogs')} onRefresh={() => query.refetch()} />
-      <SearchPanel value={keyword} onChange={setKeyword} />
+      <PageHead title={t('auditLogs')} searchValue={keyword} onSearchChange={setKeyword} onRefresh={() => query.refetch()} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
@@ -648,25 +643,48 @@ function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }
 
 function SearchPanel({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const active = expanded || Boolean(value);
   return (
-    <div className="admin-filter-bar">
-      <Input
-        allowClear
-        value={value}
-        prefix={<Search size={16} />}
-        placeholder={t('searchPlaceholder')}
-        onChange={(event) => onChange(event.target.value)}
-      />
+    <div className={`admin-filter-bar${active ? ' is-open' : ''}`}>
+      {active && (
+        <Input
+          autoFocus
+          allowClear
+          value={value}
+          placeholder={t('searchPlaceholder')}
+          onBlur={() => {
+            if (!value) setExpanded(false);
+          }}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+      <Tooltip title={t('search')}>
+        <Button shape="circle" icon={<Search size={16} />} onClick={() => setExpanded(true)} />
+      </Tooltip>
     </div>
   );
 }
 
-function PageHead({ title, onCreate, onRefresh }: { title: string; onCreate?: () => void; onRefresh?: () => void }) {
+function PageHead({
+  title,
+  searchValue,
+  onSearchChange,
+  onCreate,
+  onRefresh,
+}: {
+  title: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  onCreate?: () => void;
+  onRefresh?: () => void;
+}) {
   const { t } = useTranslation();
   return (
     <div className="page-head">
       <h1>{title}</h1>
       <Space>
+        {onSearchChange && <SearchPanel value={searchValue || ''} onChange={onSearchChange} />}
         {onRefresh && (
           <Tooltip title={t('refresh')}>
             <Button shape="circle" icon={<RefreshCw size={16} />} onClick={onRefresh} />
