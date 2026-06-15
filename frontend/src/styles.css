@@ -407,6 +407,36 @@ input {
   margin-bottom: 16px;
 }
 
+.admin-filter-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px;
+  border: 1px solid rgba(20, 184, 166, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 14px 34px rgba(15, 118, 110, 0.06);
+  backdrop-filter: blur(12px);
+}
+
+:root[data-theme="dark"] .admin-filter-bar {
+  border-color: rgba(103, 232, 249, 0.14);
+  background: rgba(13, 23, 38, 0.78);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+}
+
+.admin-filter-bar .ant-input-affix-wrapper {
+  max-width: 360px;
+  border-radius: 999px;
+}
+
+.admin-filter-bar svg {
+  color: #0f766e;
+}
+
+:root[data-theme="dark"] .admin-filter-bar svg {
+  color: #67e8f9;
+}
+
 .center-table .ant-table-cell {
   text-align: center;
   vertical-align: middle;
@@ -490,6 +520,14 @@ input {
   .page-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .admin-filter-bar {
+    justify-content: stretch;
+  }
+
+  .admin-filter-bar .ant-input-affix-wrapper {
+    max-width: none;
   }
 
   .public-shell {

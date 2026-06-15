@@ -1,13 +1,14 @@
 import { Button, Form, Input, message } from 'antd';
 import { LockKeyhole, UserRound } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { login } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 
 export function AdminLoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const [msg, contextHolder] = message.useMessage();
 
@@ -16,7 +17,7 @@ export function AdminLoginPage() {
     onSuccess: (data) => {
       localStorage.setItem('adminToken', data.token);
       localStorage.setItem('adminUser', JSON.stringify(data.admin));
-      navigate('/admin');
+      navigate(searchParams.get('redirect') || '/admin', { replace: true });
     },
     onError: (error: Error) => msg.error(error.message),
   });

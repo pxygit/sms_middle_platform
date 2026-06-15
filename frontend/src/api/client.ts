@@ -13,6 +13,29 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const requestUrl = String(error?.config?.url || '');
+    const isAdminRequest = requestUrl.includes('/admin');
+    const isLoginRequest = requestUrl.includes('/admin/auth/login');
+    const isAdminPage = window.location.pathname.startsWith('/admin');
+
+    if (status === 401 && !isLoginRequest && (isAdminRequest || isAdminPage)) {
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('adminUser');
+
+      if (window.location.pathname !== '/admin/login') {
+        const current = `${window.location.pathname}${window.location.search}`;
+        window.location.replace(`/admin/login?redirect=${encodeURIComponent(current)}`);
+      }
+    }
+
+    return Promise.reject(error);
+  },
+);
+
 export async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T> {
   try {
     const response = await promise;

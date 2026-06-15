@@ -24,8 +24,10 @@ import {
   ClipboardList,
   Copy,
   Database,
+  Download,
   Eye,
   EyeOff,
+  Pencil,
   Home,
   KeyRound,
   LockKeyhole,
@@ -33,9 +35,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Search,
   ScrollText,
   Settings2,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -175,6 +179,7 @@ function ServicesPage() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
+  const [keyword, setKeyword] = useState('');
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const providerCode = Form.useWatch('providerCode', form) || 'smspool';
@@ -212,6 +217,7 @@ function ServicesPage() {
     mutationFn: deleteServiceConfig,
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['service-configs'] }),
   });
+  const rows = filterRows(query.data || [], keyword);
 
   const openCreate = () => {
     setEditing(null);
@@ -250,11 +256,12 @@ function ServicesPage() {
   return (
     <div className="admin-page">
       <PageHead title={t('serviceConfigs')} onCreate={openCreate} onRefresh={() => query.refetch()} />
+      <SearchPanel value={keyword} onChange={setKeyword} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
         rowKey="id"
-        dataSource={query.data || []}
+        dataSource={rows}
         loading={query.isLoading}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
@@ -271,9 +278,13 @@ function ServicesPage() {
             width: 160,
             render: (_: unknown, row: any) => (
               <Space>
-                <Button size="small" shape="round" onClick={() => openEdit(row)}>{t('edit')}</Button>
+                <Tooltip title={t('edit')}>
+                  <Button size="small" shape="circle" icon={<Pencil size={15} />} onClick={() => openEdit(row)} />
+                </Tooltip>
                 <Popconfirm title={t('confirmDelete')} onConfirm={() => deleteMutation.mutate(row.id)}>
-                  <Button size="small" shape="round" danger>{t('delete')}</Button>
+                  <Tooltip title={t('delete')}>
+                    <Button size="small" shape="circle" danger icon={<Trash2 size={15} />} />
+                  </Tooltip>
                 </Popconfirm>
               </Space>
             ),
@@ -367,6 +378,7 @@ function BatchesPage() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [permanent, setPermanent] = useState(false);
+  const [keyword, setKeyword] = useState('');
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const batches = useQuery({ queryKey: ['card-batches'], queryFn: listCardBatches });
@@ -384,21 +396,29 @@ function BatchesPage() {
     mutationFn: deleteCardBatch,
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['card-batches'] }),
   });
+  const rows = filterRows(
+    (batches.data || []).map((row: any) => ({
+      ...row,
+      serviceKey: serviceKeyById(services.data || [], row.serviceConfigId),
+    })),
+    keyword,
+  );
 
   return (
     <div className="admin-page">
       <PageHead title={t('cardBatches')} onCreate={() => setOpen(true)} onRefresh={() => batches.refetch()} />
+      <SearchPanel value={keyword} onChange={setKeyword} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
         rowKey="id"
-        dataSource={batches.data || []}
+        dataSource={rows}
         loading={batches.isLoading}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
           centerColumn({ title: t('batchName'), dataIndex: 'name' }),
           centerColumn({ title: t('provider'), dataIndex: 'providerCode' }),
-          centerColumn({ title: t('serviceKey'), width: 260, render: (_: unknown, row: any) => serviceKeyById(services.data || [], row.serviceConfigId) }),
+          centerColumn({ title: t('serviceKey'), width: 260, render: (_: unknown, row: any) => row.serviceKey }),
           centerColumn({ title: t('quantity'), dataIndex: 'quantity' }),
           centerColumn({ title: t('usesPerCode'), dataIndex: 'usesPerCode' }),
           centerColumn({ title: t('expiresAt'), dataIndex: 'expiresAt', render: (value: string) => value ? formatDateTime(value) : t('noExpiry') }),
@@ -408,16 +428,18 @@ function BatchesPage() {
             title: t('actions'),
             render: (_: unknown, row: any) => (
               <Space>
-                <Button shape="round" onClick={() => void downloadCardBatch(row.id)}>
-                  {t('exportTxt')}
-                </Button>
+                <Tooltip title={t('exportTxt')}>
+                  <Button shape="circle" icon={<Download size={16} />} onClick={() => void downloadCardBatch(row.id)} />
+                </Tooltip>
                 <Popconfirm
                   title={t('confirmDelete')}
                   description={t('deleteBatchDanger')}
                   okButtonProps={{ danger: true }}
                   onConfirm={() => deleteMutation.mutate(row.id)}
                 >
-                  <Button shape="round" danger>{t('delete')}</Button>
+                  <Tooltip title={t('delete')}>
+                    <Button shape="circle" danger icon={<Trash2 size={16} />} />
+                  </Tooltip>
                 </Popconfirm>
               </Space>
             ),
@@ -455,6 +477,7 @@ function CardsPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [msg, contextHolder] = message.useMessage();
+  const [keyword, setKeyword] = useState('');
   const query = useQuery({ queryKey: ['card-codes'], queryFn: listCardCodes });
   const mutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => updateCardStatus(id, status),
@@ -470,15 +493,17 @@ function CardsPage() {
       void qc.invalidateQueries({ queryKey: ['card-codes'] });
     },
   });
+  const rows = filterRows(query.data || [], keyword);
   return (
     <div className="admin-page">
       {contextHolder}
       <PageHead title={t('cardCodes')} onRefresh={() => query.refetch()} />
+      <SearchPanel value={keyword} onChange={setKeyword} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
         rowKey="id"
-        dataSource={query.data || []}
+        dataSource={rows}
         loading={query.isLoading}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
@@ -498,14 +523,18 @@ function CardsPage() {
             title: t('actions'),
             render: (_: unknown, row: any) => (
               <Space>
-                <Button size="small" shape="round" disabled={row.status === 'enabled'} onClick={() => mutation.mutate({ id: row.id, status: 'enabled' })}>
-                  {t('enabled')}
-                </Button>
-                <Button size="small" shape="round" disabled={row.status === 'disabled'} onClick={() => mutation.mutate({ id: row.id, status: 'disabled' })}>
-                  {t('disabled')}
-                </Button>
+                <Tooltip title={row.status === 'enabled' ? t('enabled') : t('disabled')}>
+                  <Switch
+                    size="small"
+                    checked={row.status === 'enabled'}
+                    loading={mutation.isPending}
+                    onChange={(checked) => mutation.mutate({ id: row.id, status: checked ? 'enabled' : 'disabled' })}
+                  />
+                </Tooltip>
                 <Popconfirm title={t('confirmDelete')} okButtonProps={{ danger: true }} onConfirm={() => deleteMutation.mutate(row.id)}>
-                  <Button size="small" shape="round" danger>{t('delete')}</Button>
+                  <Tooltip title={t('delete')}>
+                    <Button size="small" shape="circle" danger icon={<Trash2 size={15} />} />
+                  </Tooltip>
                 </Popconfirm>
               </Space>
             ),
@@ -518,15 +547,18 @@ function CardsPage() {
 
 function OrdersPage() {
   const { t } = useTranslation();
+  const [keyword, setKeyword] = useState('');
   const query = useQuery({ queryKey: ['orders'], queryFn: listOrders, refetchInterval: 8000 });
+  const rows = filterRows(query.data || [], keyword);
   return (
     <div className="admin-page">
       <PageHead title={t('orders')} onRefresh={() => query.refetch()} />
+      <SearchPanel value={keyword} onChange={setKeyword} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
         rowKey="id"
-        dataSource={query.data || []}
+        dataSource={rows}
         loading={query.isLoading}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
@@ -547,15 +579,18 @@ function OrdersPage() {
 
 function AuditPage() {
   const { t } = useTranslation();
+  const [keyword, setKeyword] = useState('');
   const query = useQuery({ queryKey: ['audit-logs'], queryFn: listAuditLogs });
+  const rows = filterRows(query.data || [], keyword);
   return (
     <div className="admin-page">
       <PageHead title={t('auditLogs')} onRefresh={() => query.refetch()} />
+      <SearchPanel value={keyword} onChange={setKeyword} />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
         rowKey="id"
-        dataSource={query.data || []}
+        dataSource={rows}
         loading={query.isLoading}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
@@ -608,6 +643,21 @@ function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }
         <Button htmlType="submit" type="primary" shape="round" loading={mutation.isPending}>{t('save')}</Button>
       </Form>
     </Modal>
+  );
+}
+
+function SearchPanel({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="admin-filter-bar">
+      <Input
+        allowClear
+        value={value}
+        prefix={<Search size={16} />}
+        placeholder={t('searchPlaceholder')}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
   );
 }
 
@@ -685,6 +735,12 @@ function centerColumn(column: any) {
 
 function serviceKeyById(services: any[], id: number) {
   return services.find((item) => item.id === id)?.targetPlatform || id || '-';
+}
+
+function filterRows<T>(rows: T[], keyword: string) {
+  const normalized = keyword.trim().toLowerCase();
+  if (!normalized) return rows;
+  return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(normalized));
 }
 
 function buildServiceKey(provider: string, country: string, service: string) {
