@@ -56,16 +56,20 @@ type CancelResult struct {
 
 type ProviderCountry struct {
 	ID        int    `json:"id"`
+	Code      string `json:"code,omitempty"`
 	Name      string `json:"name"`
 	ShortName string `json:"shortName"`
 	Region    string `json:"region"`
+	DialCode  string `json:"dialCode,omitempty"`
 }
 
 type ProviderService struct {
 	ID          int    `json:"id"`
+	Code        string `json:"code,omitempty"`
 	Name        string `json:"name"`
 	Favourite   int    `json:"favourite"`
 	CountryID   int    `json:"countryId,omitempty"`
+	CountryCode string `json:"countryCode,omitempty"`
 	CountryName string `json:"countryName,omitempty"`
 	Price       string `json:"price,omitempty"`
 	Stock       int    `json:"stock,omitempty"`
@@ -97,6 +101,16 @@ type ProviderStock struct {
 	Raw    json.RawMessage `json:"-"`
 }
 
+type ProviderQuote struct {
+	Price *ProviderPrice `json:"price,omitempty"`
+	Stock *ProviderStock `json:"stock,omitempty"`
+}
+
+type ProviderCatalog struct {
+	Countries []ProviderCountry
+	Services  []ProviderService
+}
+
 type SMSProvider interface {
 	Name() string
 	GetBalance(ctx context.Context) (*ProviderBalance, error)
@@ -110,6 +124,10 @@ type MetadataProvider interface {
 	GetServices(ctx context.Context, countryID string) ([]ProviderService, error)
 	GetPrice(ctx context.Context, input ProviderPriceInput) (*ProviderPrice, error)
 	GetStock(ctx context.Context, input ProviderStockInput) (*ProviderStock, error)
+}
+
+type CatalogProvider interface {
+	GetCatalog(ctx context.Context) (*ProviderCatalog, error)
 }
 
 type ConfigurableProvider interface {

@@ -26,10 +26,11 @@ type Client struct {
 }
 
 type itemRow struct {
-	ID        int
+	ID        string
 	Name      string
 	Country   string
-	CountryID int
+	CountryID string
+	DialCode  string
 	Price     string
 	Stock     int
 }
@@ -72,7 +73,7 @@ func (c *Client) GetBalance(ctx context.Context) (*sms.ProviderBalance, error) {
 	if len(parts) >= 2 && parts[0] == "1" {
 		return &sms.ProviderBalance{Balance: parts[1]}, nil
 	}
-	return nil, providerError(raw)
+	return nil, balanceError(raw)
 }
 
 func (c *Client) RequestNumber(ctx context.Context, input sms.RequestNumberInput) (*sms.RequestNumberResult, error) {
@@ -171,27 +172,68 @@ func (c *Client) CancelNumber(ctx context.Context, input sms.CancelNumberInput) 
 }
 
 func (c *Client) GetCountries(ctx context.Context) ([]sms.ProviderCountry, error) {
+	countries, err := c.staticCountries(ctx)
+	if err != nil {
+		items, itemErr := c.items(ctx)
+		if itemErr != nil {
+			return nil, err
+		}
+		seen := map[string]sms.ProviderCountry{}
+		for _, item := range items {
+			if item.CountryID == "" {
+				continue
+			}
+			seen[item.CountryID] = sms.ProviderCountry{
+				Code:      item.CountryID,
+				Name:      item.Country,
+				ShortName: item.CountryID,
+				DialCode:  item.DialCode,
+				Region:    "",
+			}
+		}
+		countries = make([]sms.ProviderCountry, 0, len(seen))
+		for _, country := range seen {
+			countries = append(countries, country)
+		}
+	}
+	return countries, nil
+}
+
+func (c *Client) GetCatalog(ctx context.Context) (*sms.ProviderCatalog, error) {
 	items, err := c.items(ctx)
 	if err != nil {
 		return nil, err
 	}
-	seen := map[int]sms.ProviderCountry{}
-	for _, item := range items {
-		if item.CountryID == 0 {
-			continue
-		}
-		seen[item.CountryID] = sms.ProviderCountry{
-			ID:        item.CountryID,
-			Name:      item.Country,
-			ShortName: strconv.Itoa(item.CountryID),
-			Region:    "",
-		}
+	countriesByID := map[string]sms.ProviderCountry{}
+	staticCountries, _ := c.staticCountries(ctx)
+	for _, country := range staticCountries {
+		countriesByID[country.Code] = country
 	}
-	countries := make([]sms.ProviderCountry, 0, len(seen))
-	for _, country := range seen {
+	services := make([]sms.ProviderService, 0, len(items))
+	for _, item := range items {
+		if item.CountryID != "" {
+			countriesByID[item.CountryID] = sms.ProviderCountry{
+				Code:      item.CountryID,
+				Name:      item.Country,
+				ShortName: item.CountryID,
+				DialCode:  item.DialCode,
+				Region:    "",
+			}
+		}
+		services = append(services, sms.ProviderService{
+			Code:        item.ID,
+			Name:        item.Name,
+			CountryCode: item.CountryID,
+			CountryName: item.Country,
+			Price:       item.Price,
+			Stock:       item.Stock,
+		})
+	}
+	countries := make([]sms.ProviderCountry, 0, len(countriesByID))
+	for _, country := range countriesByID {
 		countries = append(countries, country)
 	}
-	return countries, nil
+	return &sms.ProviderCatalog{Countries: countries, Services: services}, nil
 }
 
 func (c *Client) GetServices(ctx context.Context, countryID string) ([]sms.ProviderService, error) {
@@ -202,17 +244,19 @@ func (c *Client) GetServices(ctx context.Context, countryID string) ([]sms.Provi
 	services := make([]sms.ProviderService, 0, len(items))
 	seen := map[int]bool{}
 	for _, item := range items {
-		if countryID != "" && item.CountryID != 0 && strconv.Itoa(item.CountryID) != countryID {
+		if countryID != "" && item.CountryID != "" && item.CountryID != countryID {
 			continue
 		}
-		if seen[item.ID] {
+		itemID, _ := strconv.Atoi(item.ID)
+		if seen[itemID] {
 			continue
 		}
-		seen[item.ID] = true
+		seen[itemID] = true
 		services = append(services, sms.ProviderService{
-			ID:          item.ID,
+			ID:          itemID,
+			Code:        item.ID,
 			Name:        item.Name,
-			CountryID:   item.CountryID,
+			CountryCode: item.CountryID,
 			CountryName: item.Country,
 			Price:       item.Price,
 			Stock:       item.Stock,
@@ -243,7 +287,7 @@ func (c *Client) findItem(ctx context.Context, input sms.ProviderPriceInput) (*i
 		return nil, err
 	}
 	for _, item := range items {
-		if strconv.Itoa(item.ID) == input.ServiceID && (input.CountryID == "" || item.CountryID == 0 || strconv.Itoa(item.CountryID) == input.CountryID) {
+		if item.ID == input.ServiceID && (input.CountryID == "" || item.CountryID == "" || item.CountryID == input.CountryID) {
 			return &item, nil
 		}
 	}
@@ -262,6 +306,39 @@ func (c *Client) items(ctx context.Context) ([]itemRow, error) {
 		return nil, providerError(raw)
 	}
 	return parseItems(raw)
+}
+
+func (c *Client) staticCountries(ctx context.Context) ([]sms.ProviderCountry, error) {
+	raw, status, err := c.form(ctx, "/api/init.ashx", url.Values{"act": {"PagCountry"}})
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("firefox http %d: %s", status, raw)
+	}
+	var rows []struct {
+		ID      string          `json:"Country_ID"`
+		Area    json.RawMessage `json:"Country_Area"`
+		Title   string          `json:"Country_Title"`
+		Phone   string          `json:"Country_PhoneLenth"`
+		Country string          `json:"Country_Name"`
+	}
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil, err
+	}
+	countries := make([]sms.ProviderCountry, 0, len(rows))
+	for _, row := range rows {
+		name := parseCountryName(row.Title)
+		dialCode := strings.Trim(string(row.Area), `"`)
+		countries = append(countries, sms.ProviderCountry{
+			Code:      row.ID,
+			Name:      cleanCountryName(name, row.ID),
+			ShortName: row.ID,
+			DialCode:  dialCode,
+			Region:    row.Phone,
+		})
+	}
+	return countries, nil
 }
 
 func (c *Client) token(ctx context.Context) (string, error) {
@@ -320,6 +397,33 @@ func (c *Client) call(ctx context.Context, action string, query url.Values) (str
 	return text, resp.StatusCode, nil
 }
 
+func (c *Client) form(ctx context.Context, path string, form url.Values) (string, int, error) {
+	_, baseURL := c.config()
+	target := baseURL + path
+	body := strings.NewReader(form.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, body)
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	start := time.Now()
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.log(path, form, 0, false, err.Error(), time.Since(start), "")
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(resp.Body)
+	text := strings.TrimSpace(string(responseBody))
+	if err != nil {
+		c.log(path, form, resp.StatusCode, false, err.Error(), time.Since(start), text)
+		return text, resp.StatusCode, err
+	}
+	c.log(path, form, resp.StatusCode, resp.StatusCode < 400, "", time.Since(start), text)
+	return text, resp.StatusCode, nil
+}
+
 func (c *Client) config() (string, string) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -368,6 +472,19 @@ func providerError(raw string) error {
 		if seconds, err := strconv.Atoi(code); err == nil && seconds > 0 {
 			return sms.NewProviderError(sms.ErrCannotCancel, message)
 		}
+		return sms.NewProviderError(sms.ErrProviderRejected, message)
+	}
+}
+
+func balanceError(raw string) error {
+	code := failureCode(raw)
+	message := strings.TrimSpace(raw)
+	switch code {
+	case "-1", "-2":
+		return sms.NewProviderError("AUTH_ERROR", message)
+	case "-3":
+		return sms.NewProviderError(sms.ErrRateLimited, "balance check is limited to once per 60 seconds")
+	default:
 		return sms.NewProviderError(sms.ErrProviderRejected, message)
 	}
 }
@@ -440,10 +557,10 @@ func buildPhone(countryCode, national string) string {
 
 func parseItems(raw string) ([]itemRow, error) {
 	var rows []struct {
-		ItemID       int             `json:"Item_ID"`
+		ItemID       json.RawMessage `json:"Item_ID"`
 		ItemName     string          `json:"Item_Name"`
 		ItemUPrice   json.RawMessage `json:"Item_UPrice"`
-		CountryID    int             `json:"Country_ID"`
+		CountryID    json.RawMessage `json:"Country_ID"`
 		CountryTitle string          `json:"Country_Title"`
 		Stock        int             `json:"Stock"`
 		StockCount   int             `json:"Stock_Count"`
@@ -454,18 +571,51 @@ func parseItems(raw string) ([]itemRow, error) {
 	items := make([]itemRow, 0, len(rows))
 	for _, row := range rows {
 		price := strings.Trim(string(row.ItemUPrice), `"`)
+		itemID := rawMessageString(row.ItemID)
+		countryID := rawMessageString(row.CountryID)
+		countryName, dialCode := parseCountryTitle(row.CountryTitle)
 		stock := row.Stock
 		if stock == 0 {
 			stock = row.StockCount
 		}
 		items = append(items, itemRow{
-			ID:        row.ItemID,
+			ID:        itemID,
 			Name:      row.ItemName,
-			Country:   row.CountryTitle,
-			CountryID: row.CountryID,
+			Country:   cleanCountryName(countryName, countryID),
+			CountryID: countryID,
+			DialCode:  dialCode,
 			Price:     price,
 			Stock:     stock,
 		})
 	}
 	return items, nil
+}
+
+func rawMessageString(raw json.RawMessage) string {
+	value := strings.TrimSpace(string(raw))
+	return strings.Trim(value, `"`)
+}
+
+func parseCountryTitle(title string) (string, string) {
+	parts := strings.Split(title, "/")
+	if len(parts) >= 3 {
+		return strings.TrimSpace(parts[1]) + " / " + strings.TrimSpace(parts[2]), strings.TrimPrefix(strings.TrimSpace(parts[0]), "+")
+	}
+	if len(parts) >= 2 {
+		return strings.TrimSpace(parts[1]), strings.TrimPrefix(strings.TrimSpace(parts[0]), "+")
+	}
+	return strings.TrimSpace(title), ""
+}
+
+func parseCountryName(title string) string {
+	name, _ := parseCountryTitle(title)
+	return name
+}
+
+func cleanCountryName(name, fallback string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fallback
+	}
+	return name
 }

@@ -40,7 +40,7 @@ func main() {
 	if err := catalog.ConfigureRuntimeProviders(); err != nil {
 		log.Fatalf("configure providers: %v", err)
 	}
-	meta := service.NewProviderMetadataService(registry)
+	meta := service.NewProviderMetadataService(db, registry)
 	cards := service.NewCardService(db, cfg.CardExportDir, cfg.DataEncryptionKey)
 	orders := service.NewOrderService(db, registry)
 	dashboard := service.NewDashboardService(db)
@@ -48,6 +48,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	job.NewPoller(orders, cfg.OrderPollInterval).Start(ctx)
+	job.NewProviderMetadataSyncer(meta).Start(ctx)
 
 	engine := router.New(cfg, router.Services{
 		Admins:    admins,

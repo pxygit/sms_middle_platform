@@ -7,6 +7,7 @@ import type {
   ProviderBalance,
   ProviderCountry,
   ProviderPrice,
+  ProviderQuote,
   ProviderService,
   ProviderStock,
   ReceiveOrder,
@@ -44,6 +45,10 @@ export function getProviderPrice(provider: string, params: { countryId?: string;
 
 export function getProviderStock(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
   return unwrap<ProviderStock>(api.get(`/admin/providers/${provider}/stock`, { params }));
+}
+
+export function getProviderQuote(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
+  return unwrap<ProviderQuote>(api.get(`/admin/providers/${provider}/quote`, { params }));
 }
 
 export function getProviderBalance(provider: string) {

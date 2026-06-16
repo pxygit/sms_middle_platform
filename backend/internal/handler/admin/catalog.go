@@ -153,6 +153,19 @@ func (h *CatalogHandler) ProviderStock(c *gin.Context) {
 	response.OK(c, stock)
 }
 
+func (h *CatalogHandler) ProviderQuote(c *gin.Context) {
+	quote, err := h.meta.Quote(c.Request.Context(), c.Param("provider"), sms.ProviderPriceInput{
+		CountryID: c.Query("countryId"),
+		ServiceID: c.Query("serviceId"),
+		PoolID:    c.Query("poolId"),
+	})
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, quote)
+}
+
 func (h *CatalogHandler) ProviderBalance(c *gin.Context) {
 	balance, err := h.meta.Balance(c.Request.Context(), c.Param("provider"))
 	if err != nil {

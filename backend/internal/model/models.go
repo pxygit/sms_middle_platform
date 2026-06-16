@@ -49,6 +49,40 @@ type SMSProvider struct {
 
 func (SMSProvider) TableName() string { return "sys_sms_providers" }
 
+type ProviderCountry struct {
+	ID                uint       `gorm:"primaryKey" json:"id"`
+	ProviderCode      string     `gorm:"size:64;uniqueIndex:idx_provider_country;index;not null" json:"providerCode"`
+	ProviderCountryID string     `gorm:"size:64;uniqueIndex:idx_provider_country;not null" json:"providerCountryId"`
+	Name              string     `gorm:"size:128;not null" json:"name"`
+	ShortName         string     `gorm:"size:64" json:"shortName"`
+	Region            string     `gorm:"size:128" json:"region"`
+	DialCode          string     `gorm:"size:32" json:"dialCode"`
+	Status            string     `gorm:"size:32;not null;default:enabled" json:"status"`
+	SyncedAt          *time.Time `json:"syncedAt"`
+	ServicesSyncedAt  *time.Time `json:"servicesSyncedAt"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
+}
+
+func (ProviderCountry) TableName() string { return "sys_provider_countries" }
+
+// ProviderService caches provider service options for fast searchable dropdowns.
+// Real-time phone stock and price metrics are fetched from provider APIs on demand.
+type ProviderService struct {
+	ID                uint       `gorm:"primaryKey" json:"id"`
+	ProviderCode      string     `gorm:"size:64;uniqueIndex:idx_provider_service;index;not null" json:"providerCode"`
+	ProviderCountryID string     `gorm:"size:64;uniqueIndex:idx_provider_service;index;not null" json:"providerCountryId"`
+	ProviderServiceID string     `gorm:"size:64;uniqueIndex:idx_provider_service;not null" json:"providerServiceId"`
+	Name              string     `gorm:"size:160;not null" json:"name"`
+	CountryName       string     `gorm:"size:128" json:"countryName"`
+	Status            string     `gorm:"size:32;not null;default:enabled" json:"status"`
+	SyncedAt          *time.Time `json:"syncedAt"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
+}
+
+func (ProviderService) TableName() string { return "sys_provider_services" }
+
 type ServiceConfig struct {
 	ID                uint      `gorm:"primaryKey" json:"id"`
 	ProviderCode      string    `gorm:"size:64;index;not null" json:"providerCode"`

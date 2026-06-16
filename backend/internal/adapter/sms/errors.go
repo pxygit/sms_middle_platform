@@ -24,5 +24,6 @@ const (
 	ErrBalance          = "BALANCE_ERROR"
 	ErrOrderNotFound    = "ORDER_NOT_FOUND"
 	ErrCannotCancel     = "CANNOT_CANCEL"
+	ErrRateLimited      = "RATE_LIMITED"
 	ErrProviderRejected = "PROVIDER_REJECTED"
 )

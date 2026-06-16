@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -54,8 +54,7 @@ import {
   downloadCardBatch,
   getDashboardStats,
   getProviderBalance,
-  getProviderPrice,
-  getProviderStock,
+  getProviderQuote,
   listAuditLogs,
   listCardBatches,
   listCardCodes,
@@ -71,8 +70,9 @@ import {
 } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { formatDateTime } from '../../utils/format';
-import type { DashboardRank, ProviderCountry, ProviderService, SMSProvider } from '../../types/api';
+import type { DashboardRank, ProviderCountry, ProviderPrice, ProviderService, ProviderStock, SMSProvider } from '../../types/api';
 import { statusColor } from '../../utils/status';
+import { localizedError } from '../../utils/errors';
 
 const { Header, Sider, Content } = Layout;
 const currencyOptions = ['USD', 'CNY', 'EUR', 'GBP', 'HKD', 'JPY', 'USDT'];
@@ -169,7 +169,7 @@ function Dashboard() {
       const data = await getProviderBalance(provider.code);
       setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt } }));
     } catch (error: any) {
-      setBalances((current) => ({ ...current, [provider.code]: { error: error?.message || t('balanceCheckFailed'), checkedAt } }));
+      setBalances((current) => ({ ...current, [provider.code]: { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt } }));
     } finally {
       setCheckingProviders((current) => ({ ...current, [provider.code]: false }));
     }
@@ -185,7 +185,7 @@ function Dashboard() {
             const data = await getProviderBalance(provider.code);
             return [provider.code, { balance: data.balance, checkedAt }] as const;
           } catch (error: any) {
-            return [provider.code, { error: error?.message || t('balanceCheckFailed'), checkedAt }] as const;
+            return [provider.code, { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt }] as const;
           }
         }),
       );
@@ -348,7 +348,7 @@ function ProvidersPage() {
       const data = await getProviderBalance(provider.code);
       setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt } }));
     } catch (error: any) {
-      setBalances((current) => ({ ...current, [provider.code]: { error: error?.message || t('balanceCheckFailed'), checkedAt } }));
+      setBalances((current) => ({ ...current, [provider.code]: { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt } }));
     } finally {
       setCheckingProviders((current) => ({ ...current, [provider.code]: false }));
     }
@@ -482,8 +482,6 @@ function ServicesPage() {
   const providerCode = Form.useWatch('providerCode', form) || 'smspool';
   const countryId = Form.useWatch('providerCountryId', form);
   const serviceId = Form.useWatch('providerServiceId', form);
-  const poolId = Form.useWatch('providerPoolId', form);
-  const isFirefoxProvider = providerCode === 'firefox';
   const query = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
   const currencyByProvider = providerCurrencyMap(providers.data || []);
@@ -495,13 +493,12 @@ function ServicesPage() {
   const services = useQuery({
     queryKey: ['provider-services', providerCode, countryId],
     queryFn: () => listProviderServices(providerCode, countryId),
-    enabled: open && Boolean(providerCode) && (isFirefoxProvider || Boolean(countryId)),
+    enabled: open && Boolean(providerCode) && Boolean(countryId),
   });
-  const quote = useMutation({
-    mutationFn: async () => ({
-      price: await getProviderPrice(providerCode, { countryId, serviceId, poolId }),
-      stock: await getProviderStock(providerCode, { countryId, serviceId, poolId }),
-    }),
+  const quote = useQuery({
+    queryKey: ['provider-quote', providerCode, countryId, serviceId],
+    queryFn: () => getProviderQuote(providerCode, { countryId, serviceId }),
+    enabled: open && Boolean(providerCode) && Boolean(countryId) && Boolean(serviceId),
   });
   const mutation = useMutation({
     mutationFn: (values: any) => editing ? updateServiceConfig(editing.id, values) : createServiceConfig(values),
@@ -517,9 +514,6 @@ function ServicesPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['service-configs'] }),
   });
   const rows = filterRows(query.data || [], keyword);
-  const firefoxCountryOptions = (countries.data || []).filter((country) =>
-    (services.data || []).some((service: any) => String((service as any).countryId || '') === String(country.id)),
-  );
 
   const openCreate = () => {
     setEditing(null);
@@ -535,51 +529,36 @@ function ServicesPage() {
   };
 
   const onCountryChange = (value: string) => {
-    const selected = countries.data?.find((item) => String(item.id) === value);
+    const selected = countries.data?.find((item) => countryValue(item) === value);
     form.setFieldsValue({
       providerCountryId: value,
       countryCode: selected?.shortName || '',
       countryName: selected?.name || '',
       providerServiceId: undefined,
+      displayName: '',
       targetPlatform: undefined,
+      maxPrice: undefined,
     });
   };
 
   const onServiceChange = (value: string) => {
-    const selected = services.data?.find((item) => String(item.id) === value);
-    const country = countries.data?.find((item) => String(item.id) === countryId);
+    const selected = services.data?.find((item) => serviceValue(item) === value);
+    const country = countries.data?.find((item) => countryValue(item) === countryId);
     form.setFieldsValue({
       providerServiceId: value,
       displayName: selected?.name || '',
       targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || '', selected?.name || ''),
+      maxPrice: undefined,
     });
   };
 
-  const onFirefoxServiceChange = (value: string) => {
-    const selected = services.data?.find((item) => String(item.id) === value) as any;
-    const serviceCountryId = selected?.countryId ? String(selected.countryId) : undefined;
-    const country = countries.data?.find((item) => String(item.id) === serviceCountryId);
-    form.setFieldsValue({
-      providerServiceId: value,
-      providerCountryId: serviceCountryId,
-      countryCode: country?.shortName || serviceCountryId || '',
-      countryName: country?.name || '',
-      displayName: selected?.name || '',
-      maxPrice: Number(selected?.price || 0) || undefined,
-      targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || serviceCountryId || '', selected?.name || ''),
-    });
-  };
-
-  const onFirefoxCountryChange = (value: string) => {
-    const country = countries.data?.find((item) => String(item.id) === value);
-    const selected = services.data?.find((item) => String(item.id) === serviceId);
-    form.setFieldsValue({
-      providerCountryId: value,
-      countryCode: country?.shortName || value,
-      countryName: country?.name || '',
-      targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || value, selected?.name || ''),
-    });
-  };
+  useEffect(() => {
+    const quotePrice = quote.data?.price;
+    const lowPrice = quotePrice?.lowPrice || quotePrice?.price;
+    if (open && lowPrice && !editing) {
+      form.setFieldValue('maxPrice', Number(lowPrice));
+    }
+  }, [editing, form, open, quote.data]);
 
   return (
     <div className="admin-page">
@@ -635,7 +614,6 @@ function ServicesPage() {
                   providerCode: value,
                   providerCountryId: undefined,
                   providerServiceId: undefined,
-                  providerPoolId: undefined,
                   countryCode: '',
                   countryName: '',
                   displayName: '',
@@ -645,96 +623,44 @@ function ServicesPage() {
               }}
             />
           </Form.Item>
-          {isFirefoxProvider ? (
-            <>
-              <Alert className="form-help" type="info" showIcon message={t('firefoxServiceConfigHelp')} />
-              <Form.Item name="providerServiceId" label={t('firefoxProject')} rules={[{ required: true }]}>
-                <Select
-                  showSearch
-                  loading={services.isLoading}
-                  optionFilterProp="label"
-                  placeholder={t('selectServiceFirst')}
-                  onChange={onFirefoxServiceChange}
-                  options={(services.data || []).map((item: ProviderService) => ({
-                    label: `${item.name}${item.countryName ? ` / ${item.countryName}` : ''}${item.price ? ` / ${formatMoney(item.price, currencyByProvider[providerCode])}` : ''}`,
-                    value: String(item.id),
-                  }))}
-                />
-              </Form.Item>
-              <Form.Item name="providerCountryId" label={t('providerCountry')} rules={[{ required: true }]}>
-                <Select
-                  showSearch
-                  loading={countries.isLoading}
-                  optionFilterProp="label"
-                  placeholder={t('selectServiceFirst')}
-                  onChange={onFirefoxCountryChange}
-                  options={(firefoxCountryOptions.length > 0 ? firefoxCountryOptions : countries.data || []).map((item: ProviderCountry) => ({
-                    label: `${item.name} (${item.shortName})`,
-                    value: String(item.id),
-                  }))}
-                />
-              </Form.Item>
-            </>
-          ) : (
-            <>
-              <Form.Item name="providerCountryId" label={t('providerCountry')} rules={[{ required: true }]}>
-                <Select
-                  showSearch
-                  loading={countries.isLoading}
-                  optionFilterProp="label"
-                  placeholder={t('selectProviderFirst')}
-                  onChange={onCountryChange}
-                  options={(countries.data || []).map((item: ProviderCountry) => ({
-                    label: `${item.name} (${item.shortName})`,
-                    value: String(item.id),
-                  }))}
-                />
-              </Form.Item>
-              <Form.Item name="providerServiceId" label={t('providerService')} rules={[{ required: true }]}>
-                <Select
-                  showSearch
-                  loading={services.isLoading}
-                  disabled={!countryId}
-                  optionFilterProp="label"
-                  placeholder={t('selectCountryFirst')}
-                  onChange={onServiceChange}
-                  options={(services.data || []).map((item: ProviderService) => ({
-                    label: item.name,
-                    value: String(item.id),
-                  }))}
-                />
-              </Form.Item>
-            </>
-          )}
+          <Form.Item name="providerCountryId" label={t('providerCountry')} rules={[{ required: true }]}>
+            <Select
+              showSearch
+              loading={countries.isLoading}
+              optionFilterProp="label"
+              placeholder={t('selectProviderFirst')}
+              onChange={onCountryChange}
+              options={(countries.data || []).map((item: ProviderCountry) => ({
+                label: countryLabel(item),
+                value: countryValue(item),
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="providerServiceId" label={t('providerService')} rules={[{ required: true }]}>
+            <Select
+              showSearch
+              loading={services.isLoading}
+              disabled={!countryId}
+              optionFilterProp="label"
+              placeholder={t('selectCountryFirst')}
+              onChange={onServiceChange}
+              options={(services.data || []).map((item: ProviderService) => ({
+                label: serviceLabel(item),
+                value: serviceValue(item),
+              }))}
+            />
+          </Form.Item>
           <Form.Item name="targetPlatform" label={t('platform')} rules={[{ required: true, pattern: /^\S+$/, message: 'no spaces' }]}>
             <Input />
           </Form.Item>
           <Form.Item name="displayName" hidden><Input /></Form.Item>
-          {!isFirefoxProvider && (
-            <Form.Item name="providerPoolId" label={t('providerPoolId')} tooltip={t('poolHelp')}>
-              <Input />
-            </Form.Item>
-          )}
-          {!isFirefoxProvider && (
-            <Space className="quote-row" wrap>
-              <Button
-                shape="round"
-                icon={<Database size={16} />}
-                onClick={() => quote.mutate()}
-                loading={quote.isPending}
-                disabled={!countryId || !serviceId}
-              >
-                {t('refreshQuote')}
-              </Button>
-              {quote.data?.stock && <Tag color="cyan">{t('stock')}: {quote.data.stock.amount}</Tag>}
-              {quote.data?.price && (
-                <Tag color="green">
-                  {t('lowPrice')}: {quote.data.price.lowPrice || quote.data.price.price} / {t('highPrice')}: {quote.data.price.highPrice} / {t('successRate')}: {quote.data.price.successRate}%
-                </Tag>
-              )}
-            </Space>
-          )}
-          {quote.error && <Alert className="form-help" type="warning" showIcon message={(quote.error as Error).message} />}
+          <QuoteSummary
+            loading={quote.isFetching}
+            error={quote.error as Error | null}
+            price={quote.data?.price}
+            stock={quote.data?.stock}
+            currency={currencyByProvider[providerCode]}
+          />
           <Form.Item name="maxPrice" label={t('maxPrice')} tooltip={t('maxPriceHelp')} rules={[{ required: true }]}>
             <InputNumber min={0} precision={4} style={{ width: '100%' }} />
           </Form.Item>
@@ -1029,6 +955,44 @@ function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }
   );
 }
 
+function QuoteSummary({
+  loading,
+  error,
+  price,
+  stock,
+  currency,
+}: {
+  loading: boolean;
+  error: Error | null;
+  price?: ProviderPrice;
+  stock?: ProviderStock;
+  currency?: string;
+}) {
+  const { t } = useTranslation();
+  const hasPrice = Boolean(price?.lowPrice || price?.price || price?.highPrice);
+  const hasStock = stock?.amount !== undefined;
+  const hasSuccessRate = Boolean(price && price.successRate > 0);
+  if (loading) {
+    return (
+      <Space className="quote-row" wrap>
+        <Tag color="processing">{t('loading')}</Tag>
+      </Space>
+    );
+  }
+  if (error) {
+    return <Alert className="form-help" type="warning" showIcon message={localizedError(error.message, t)} />;
+  }
+  if (!hasPrice && !hasStock && !hasSuccessRate) return null;
+  return (
+    <Space className="quote-row" wrap>
+      {hasStock && <Tag color="cyan">{t('stock')}: {stock?.amount}</Tag>}
+      {hasPrice && <Tag color="green">{t('lowPrice')}: {formatMoney(price?.lowPrice || price?.price, currency)}</Tag>}
+      {price?.highPrice && <Tag color="blue">{t('highPrice')}: {formatMoney(price.highPrice, currency)}</Tag>}
+      {hasSuccessRate && <Tag color="gold">{t('successRate')}: {price?.successRate}%</Tag>}
+    </Space>
+  );
+}
+
 function SearchPanel({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -1158,6 +1122,24 @@ function dateSorter(left?: string | null, right?: string | null) {
 
 function serviceKeyById(services: any[], id: number) {
   return services.find((item) => item.id === id)?.targetPlatform || id || '-';
+}
+
+function countryValue(item: ProviderCountry) {
+  return item.providerCountryId || String(item.id);
+}
+
+function serviceValue(item: ProviderService) {
+  return item.providerServiceId || String(item.id);
+}
+
+function countryLabel(item: ProviderCountry) {
+  return `${item.name}${item.shortName ? ` (${item.shortName})` : ''}${item.providerCountryId ? ` [${item.providerCountryId}]` : ''}`;
+}
+
+function serviceLabel(item: ProviderService) {
+  const parts = [item.name];
+  if (item.providerServiceId) parts.push(item.providerServiceId);
+  return parts.join(' · ');
 }
 
 function providerCurrencyMap(providers: SMSProvider[]) {

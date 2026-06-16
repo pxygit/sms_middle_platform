@@ -99,19 +99,25 @@ export interface CardCode {
 
 export interface ProviderCountry {
   id: number;
+  providerCode?: string;
+  providerCountryId?: string;
   name: string;
   shortName: string;
   region: string;
+  dialCode?: string;
 }
 
 export interface ProviderService {
   id: number;
+  providerCode?: string;
+  providerCountryId?: string;
+  providerServiceId?: string;
   name: string;
-  favourite: number;
-  countryId?: number;
   countryName?: string;
-  price?: string;
-  stock?: number;
+  status?: string;
+  syncedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ProviderPrice {
@@ -124,6 +130,11 @@ export interface ProviderPrice {
 
 export interface ProviderStock {
   amount: number;
+}
+
+export interface ProviderQuote {
+  price?: ProviderPrice;
+  stock?: ProviderStock;
 }
 
 export interface ProviderBalance {

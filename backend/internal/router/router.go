@@ -76,6 +76,7 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		protected.GET("/providers/:provider/services", catalogHandler.ProviderServices)
 		protected.GET("/providers/:provider/price", catalogHandler.ProviderPrice)
 		protected.GET("/providers/:provider/stock", catalogHandler.ProviderStock)
+		protected.GET("/providers/:provider/quote", catalogHandler.ProviderQuote)
 		protected.GET("/providers/:provider/balance", catalogHandler.ProviderBalance)
 		protected.GET("/service-configs", catalogHandler.ListServiceConfigs)
 		protected.POST("/service-configs", catalogHandler.CreateServiceConfig)

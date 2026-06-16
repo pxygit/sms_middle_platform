@@ -27,6 +27,8 @@ func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&model.Admin{},
 		&model.SMSProvider{},
+		&model.ProviderCountry{},
+		&model.ProviderService{},
 		&model.ServiceConfig{},
 		&model.CardBatch{},
 		&model.CardCode{},
