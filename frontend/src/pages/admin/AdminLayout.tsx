@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -159,14 +159,28 @@ export function AdminLayout() {
 function Dashboard() {
   const { t } = useTranslation();
   const [balances, setBalances] = useState<Record<string, { balance?: string; error?: string; checkedAt?: string }>>({});
+  const [checkingProviders, setCheckingProviders] = useState<Record<string, boolean>>({});
   const stats = useQuery({ queryKey: ['dashboard'], queryFn: getDashboardStats, refetchInterval: 30000 });
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
+  const checkProviderBalance = async (provider: SMSProvider) => {
+    setCheckingProviders((current) => ({ ...current, [provider.code]: true }));
+    const checkedAt = new Date().toISOString();
+    try {
+      const data = await getProviderBalance(provider.code);
+      setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt } }));
+    } catch (error: any) {
+      setBalances((current) => ({ ...current, [provider.code]: { error: error?.message || t('balanceCheckFailed'), checkedAt } }));
+    } finally {
+      setCheckingProviders((current) => ({ ...current, [provider.code]: false }));
+    }
+  };
   const balanceMutation = useMutation({
-    mutationFn: async (providerCode?: string) => {
-      const targets = providerCode ? (providers.data || []).filter((provider) => provider.code === providerCode) : providers.data || [];
+    mutationFn: async () => {
+      const targets = providers.data || [];
       const checkedAt = new Date().toISOString();
       const results = await Promise.all(
         targets.map(async (provider) => {
+          setCheckingProviders((current) => ({ ...current, [provider.code]: true }));
           try {
             const data = await getProviderBalance(provider.code);
             return [provider.code, { balance: data.balance, checkedAt }] as const;
@@ -178,6 +192,7 @@ function Dashboard() {
       return Object.fromEntries(results);
     },
     onSuccess: (result) => setBalances((current) => ({ ...current, ...result })),
+    onSettled: () => setCheckingProviders({}),
   });
   const data = stats.data;
   return (
@@ -201,8 +216,10 @@ function Dashboard() {
       <BalancePanel
         providers={providers.data || []}
         balances={balances}
-        loading={providers.isLoading || balanceMutation.isPending}
-        onCheck={(providerCode) => balanceMutation.mutate(providerCode)}
+        allLoading={providers.isLoading || balanceMutation.isPending}
+        loadingByCode={checkingProviders}
+        onCheck={(provider) => void checkProviderBalance(provider)}
+        onCheckAll={() => balanceMutation.mutate()}
       />
       <div className="dashboard-grid">
         <RankPanel title={t('providerRank')} rows={data?.providerRanking || []} loading={stats.isLoading} />
@@ -216,13 +233,17 @@ function Dashboard() {
 function BalancePanel({
   providers,
   balances,
-  loading,
+  allLoading,
+  loadingByCode,
   onCheck,
+  onCheckAll,
 }: {
-  providers: any[];
+  providers: SMSProvider[];
   balances: Record<string, { balance?: string; error?: string; checkedAt?: string }>;
-  loading: boolean;
-  onCheck: (providerCode?: string) => void;
+  allLoading: boolean;
+  loadingByCode: Record<string, boolean>;
+  onCheck: (provider: SMSProvider) => void;
+  onCheckAll: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -232,7 +253,7 @@ function BalancePanel({
           <h2>{t('providerBalance')}</h2>
           <small>{t('providerBalanceHelp')}</small>
         </div>
-        <Button shape="round" loading={loading} onClick={() => onCheck()}>
+        <Button shape="round" loading={allLoading} onClick={onCheckAll}>
           {t('checkAllBalances')}
         </Button>
       </div>
@@ -250,7 +271,7 @@ function BalancePanel({
                   {result.checkedAt && <small>{formatDateTime(result.checkedAt)}</small>}
                   {result.error && <em>{result.error}</em>}
                 </div>
-                <Button size="small" shape="circle" icon={<RefreshCw size={15} />} loading={loading} onClick={() => onCheck(provider.code)} />
+                <Button size="small" shape="circle" icon={<RefreshCw size={15} />} loading={Boolean(loadingByCode[provider.code])} onClick={() => onCheck(provider)} />
               </div>
             );
           })
@@ -305,6 +326,8 @@ function ProvidersPage() {
   const [editing, setEditing] = useState<SMSProvider | null>(null);
   const [keyword, setKeyword] = useState('');
   const [balances, setBalances] = useState<Record<string, { balance?: string; error?: string; checkedAt?: string }>>({});
+  const [checkingProviders, setCheckingProviders] = useState<Record<string, boolean>>({});
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [form] = Form.useForm();
   const query = useQuery({ queryKey: ['providers'], queryFn: listProviders });
   const rows = filterRows(query.data || [], keyword);
@@ -318,18 +341,20 @@ function ProvidersPage() {
       void qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
-  const balanceMutation = useMutation({
-    mutationFn: async (provider: SMSProvider) => {
-      const checkedAt = new Date().toISOString();
-      try {
-        const data = await getProviderBalance(provider.code);
-        return { code: provider.code, result: { balance: data.balance, checkedAt } };
-      } catch (error: any) {
-        return { code: provider.code, result: { error: error?.message || t('balanceCheckFailed'), checkedAt } };
-      }
-    },
-    onSuccess: ({ code, result }) => setBalances((current) => ({ ...current, [code]: result })),
-  });
+  const checkProviderBalance = async (provider: SMSProvider) => {
+    setCheckingProviders((current) => ({ ...current, [provider.code]: true }));
+    const checkedAt = new Date().toISOString();
+    try {
+      const data = await getProviderBalance(provider.code);
+      setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt } }));
+    } catch (error: any) {
+      setBalances((current) => ({ ...current, [provider.code]: { error: error?.message || t('balanceCheckFailed'), checkedAt } }));
+    } finally {
+      setCheckingProviders((current) => ({ ...current, [provider.code]: false }));
+    }
+  };
+  const currentPageRows = rows.slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize);
+  const checkingCurrentPage = currentPageRows.some((provider) => checkingProviders[provider.code]);
 
   const openEdit = (record: SMSProvider) => {
     setEditing(record);
@@ -339,14 +364,39 @@ function ProvidersPage() {
 
   return (
     <div className="admin-page">
-      <PageHead title={t('providers')} searchValue={keyword} onSearchChange={setKeyword} onRefresh={() => query.refetch()} />
+      <PageHead
+        title={t('providers')}
+        searchValue={keyword}
+        onSearchChange={setKeyword}
+        extraActions={(
+          <Tooltip title={t('checkCurrentPage')}>
+            <Button
+              shape="circle"
+              icon={<Radar size={16} />}
+              loading={checkingCurrentPage}
+              onClick={() => void Promise.all(currentPageRows.map((provider) => checkProviderBalance(provider)))}
+            />
+          </Tooltip>
+        )}
+        onRefresh={() => query.refetch()}
+      />
       <Table
         className="center-table"
         scroll={{ x: 'max-content' }}
         rowKey="code"
         dataSource={rows}
         loading={query.isLoading}
-        pagination={tablePagination(t)}
+        pagination={{
+          ...tablePagination(t),
+          current: pagination.current,
+          pageSize: pagination.pageSize,
+        }}
+        onChange={(nextPagination) => {
+          setPagination({
+            current: nextPagination.current || 1,
+            pageSize: nextPagination.pageSize || 10,
+          });
+        }}
         columns={[
           centerColumn({ title: t('providerCode'), dataIndex: 'code' }),
           centerColumn({ title: t('providerName'), dataIndex: 'name' }),
@@ -379,8 +429,8 @@ function ProvidersPage() {
                     size="small"
                     shape="circle"
                     icon={<Radar size={15} />}
-                    loading={balanceMutation.isPending}
-                    onClick={() => balanceMutation.mutate(row)}
+                    loading={Boolean(checkingProviders[row.code])}
+                    onClick={() => void checkProviderBalance(row)}
                   />
                 </Tooltip>
                 <Tooltip title={t('edit')}>
@@ -433,18 +483,19 @@ function ServicesPage() {
   const countryId = Form.useWatch('providerCountryId', form);
   const serviceId = Form.useWatch('providerServiceId', form);
   const poolId = Form.useWatch('providerPoolId', form);
+  const isFirefoxProvider = providerCode === 'firefox';
   const query = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
   const currencyByProvider = providerCurrencyMap(providers.data || []);
   const countries = useQuery({
     queryKey: ['provider-countries', providerCode],
     queryFn: () => listProviderCountries(providerCode),
-    enabled: open && providerCode === 'smspool',
+    enabled: open && Boolean(providerCode),
   });
   const services = useQuery({
     queryKey: ['provider-services', providerCode, countryId],
     queryFn: () => listProviderServices(providerCode, countryId),
-    enabled: open && providerCode === 'smspool' && Boolean(countryId),
+    enabled: open && Boolean(providerCode) && (isFirefoxProvider || Boolean(countryId)),
   });
   const quote = useMutation({
     mutationFn: async () => ({
@@ -466,6 +517,9 @@ function ServicesPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['service-configs'] }),
   });
   const rows = filterRows(query.data || [], keyword);
+  const firefoxCountryOptions = (countries.data || []).filter((country) =>
+    (services.data || []).some((service: any) => String((service as any).countryId || '') === String(country.id)),
+  );
 
   const openCreate = () => {
     setEditing(null);
@@ -498,6 +552,32 @@ function ServicesPage() {
       providerServiceId: value,
       displayName: selected?.name || '',
       targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || '', selected?.name || ''),
+    });
+  };
+
+  const onFirefoxServiceChange = (value: string) => {
+    const selected = services.data?.find((item) => String(item.id) === value) as any;
+    const serviceCountryId = selected?.countryId ? String(selected.countryId) : undefined;
+    const country = countries.data?.find((item) => String(item.id) === serviceCountryId);
+    form.setFieldsValue({
+      providerServiceId: value,
+      providerCountryId: serviceCountryId,
+      countryCode: country?.shortName || serviceCountryId || '',
+      countryName: country?.name || '',
+      displayName: selected?.name || '',
+      maxPrice: Number(selected?.price || 0) || undefined,
+      targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || serviceCountryId || '', selected?.name || ''),
+    });
+  };
+
+  const onFirefoxCountryChange = (value: string) => {
+    const country = countries.data?.find((item) => String(item.id) === value);
+    const selected = services.data?.find((item) => String(item.id) === serviceId);
+    form.setFieldsValue({
+      providerCountryId: value,
+      countryCode: country?.shortName || value,
+      countryName: country?.name || '',
+      targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || value, selected?.name || ''),
     });
   };
 
@@ -548,59 +628,112 @@ function ServicesPage() {
           initialValues={{ providerCode: 'smspool', timeoutSeconds: 1200, status: 'enabled' }}
         >
           <Form.Item name="providerCode" label={t('provider')} rules={[{ required: true }]}>
-            <Select options={(providers.data || []).map((item) => ({ label: item.name, value: item.code }))} />
-          </Form.Item>
-          <Form.Item name="providerCountryId" label={t('providerCountry')} rules={[{ required: true }]}>
             <Select
-              showSearch
-              loading={countries.isLoading}
-              optionFilterProp="label"
-              placeholder={t('selectProviderFirst')}
-              onChange={onCountryChange}
-              options={(countries.data || []).map((item: ProviderCountry) => ({
-                label: `${item.name} (${item.shortName})`,
-                value: String(item.id),
-              }))}
+              options={(providers.data || []).map((item) => ({ label: item.name, value: item.code }))}
+              onChange={(value) => {
+                form.setFieldsValue({
+                  providerCode: value,
+                  providerCountryId: undefined,
+                  providerServiceId: undefined,
+                  providerPoolId: undefined,
+                  countryCode: '',
+                  countryName: '',
+                  displayName: '',
+                  targetPlatform: undefined,
+                  maxPrice: undefined,
+                });
+              }}
             />
           </Form.Item>
-          <Form.Item name="providerServiceId" label={t('providerService')} rules={[{ required: true }]}>
-            <Select
-              showSearch
-              loading={services.isLoading}
-              disabled={!countryId}
-              optionFilterProp="label"
-              placeholder={t('selectCountryFirst')}
-              onChange={onServiceChange}
-              options={(services.data || []).map((item: ProviderService) => ({
-                label: item.name,
-                value: String(item.id),
-              }))}
-            />
-          </Form.Item>
+          {isFirefoxProvider ? (
+            <>
+              <Alert className="form-help" type="info" showIcon message={t('firefoxServiceConfigHelp')} />
+              <Form.Item name="providerServiceId" label={t('firefoxProject')} rules={[{ required: true }]}>
+                <Select
+                  showSearch
+                  loading={services.isLoading}
+                  optionFilterProp="label"
+                  placeholder={t('selectServiceFirst')}
+                  onChange={onFirefoxServiceChange}
+                  options={(services.data || []).map((item: ProviderService) => ({
+                    label: `${item.name}${item.countryName ? ` / ${item.countryName}` : ''}${item.price ? ` / ${formatMoney(item.price, currencyByProvider[providerCode])}` : ''}`,
+                    value: String(item.id),
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item name="providerCountryId" label={t('providerCountry')} rules={[{ required: true }]}>
+                <Select
+                  showSearch
+                  loading={countries.isLoading}
+                  optionFilterProp="label"
+                  placeholder={t('selectServiceFirst')}
+                  onChange={onFirefoxCountryChange}
+                  options={(firefoxCountryOptions.length > 0 ? firefoxCountryOptions : countries.data || []).map((item: ProviderCountry) => ({
+                    label: `${item.name} (${item.shortName})`,
+                    value: String(item.id),
+                  }))}
+                />
+              </Form.Item>
+            </>
+          ) : (
+            <>
+              <Form.Item name="providerCountryId" label={t('providerCountry')} rules={[{ required: true }]}>
+                <Select
+                  showSearch
+                  loading={countries.isLoading}
+                  optionFilterProp="label"
+                  placeholder={t('selectProviderFirst')}
+                  onChange={onCountryChange}
+                  options={(countries.data || []).map((item: ProviderCountry) => ({
+                    label: `${item.name} (${item.shortName})`,
+                    value: String(item.id),
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item name="providerServiceId" label={t('providerService')} rules={[{ required: true }]}>
+                <Select
+                  showSearch
+                  loading={services.isLoading}
+                  disabled={!countryId}
+                  optionFilterProp="label"
+                  placeholder={t('selectCountryFirst')}
+                  onChange={onServiceChange}
+                  options={(services.data || []).map((item: ProviderService) => ({
+                    label: item.name,
+                    value: String(item.id),
+                  }))}
+                />
+              </Form.Item>
+            </>
+          )}
           <Form.Item name="targetPlatform" label={t('platform')} rules={[{ required: true, pattern: /^\S+$/, message: 'no spaces' }]}>
             <Input />
           </Form.Item>
           <Form.Item name="displayName" hidden><Input /></Form.Item>
-          <Form.Item name="providerPoolId" label={t('providerPoolId')} tooltip={t('poolHelp')}>
-            <Input />
-          </Form.Item>
-          <Space className="quote-row" wrap>
-            <Button
-              shape="round"
-              icon={<Database size={16} />}
-              onClick={() => quote.mutate()}
-              loading={quote.isPending}
-              disabled={!countryId || !serviceId}
-            >
-              {t('refreshQuote')}
-            </Button>
-            {quote.data?.stock && <Tag color="cyan">{t('stock')}: {quote.data.stock.amount}</Tag>}
-            {quote.data?.price && (
-              <Tag color="green">
-                {t('lowPrice')}: {quote.data.price.lowPrice || quote.data.price.price} / {t('highPrice')}: {quote.data.price.highPrice} / {t('successRate')}: {quote.data.price.successRate}%
-              </Tag>
-            )}
-          </Space>
+          {!isFirefoxProvider && (
+            <Form.Item name="providerPoolId" label={t('providerPoolId')} tooltip={t('poolHelp')}>
+              <Input />
+            </Form.Item>
+          )}
+          {!isFirefoxProvider && (
+            <Space className="quote-row" wrap>
+              <Button
+                shape="round"
+                icon={<Database size={16} />}
+                onClick={() => quote.mutate()}
+                loading={quote.isPending}
+                disabled={!countryId || !serviceId}
+              >
+                {t('refreshQuote')}
+              </Button>
+              {quote.data?.stock && <Tag color="cyan">{t('stock')}: {quote.data.stock.amount}</Tag>}
+              {quote.data?.price && (
+                <Tag color="green">
+                  {t('lowPrice')}: {quote.data.price.lowPrice || quote.data.price.price} / {t('highPrice')}: {quote.data.price.highPrice} / {t('successRate')}: {quote.data.price.successRate}%
+                </Tag>
+              )}
+            </Space>
+          )}
           {quote.error && <Alert className="form-help" type="warning" showIcon message={(quote.error as Error).message} />}
           <Form.Item name="maxPrice" label={t('maxPrice')} tooltip={t('maxPriceHelp')} rules={[{ required: true }]}>
             <InputNumber min={0} precision={4} style={{ width: '100%' }} />
@@ -925,12 +1058,14 @@ function PageHead({
   title,
   searchValue,
   onSearchChange,
+  extraActions,
   onCreate,
   onRefresh,
 }: {
   title: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  extraActions?: ReactNode;
   onCreate?: () => void;
   onRefresh?: () => void;
 }) {
@@ -940,6 +1075,7 @@ function PageHead({
       <h1>{title}</h1>
       <Space>
         {onSearchChange && <SearchPanel value={searchValue || ''} onChange={onSearchChange} />}
+        {extraActions}
         {onRefresh && (
           <Tooltip title={t('refresh')}>
             <Button shape="circle" icon={<RefreshCw size={16} />} onClick={onRefresh} />

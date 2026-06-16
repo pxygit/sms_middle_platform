@@ -20,6 +20,9 @@ type Config struct {
 	SMSPoolAPIKey        string
 	SMSPoolBaseURL       string
 	SMSPoolTimeout       time.Duration
+	FirefoxAPIKey        string
+	FirefoxBaseURL       string
+	FirefoxTimeout       time.Duration
 	OrderPollInterval    time.Duration
 	OrderTimeout         time.Duration
 	CardExportDir        string
@@ -40,6 +43,9 @@ func Load() Config {
 		SMSPoolAPIKey:        getEnv("SMSPOOL_API_KEY", ""),
 		SMSPoolBaseURL:       getEnv("SMSPOOL_BASE_URL", "https://api.smspool.net"),
 		SMSPoolTimeout:       time.Duration(getEnvInt("SMSPOOL_TIMEOUT_SECONDS", 15)) * time.Second,
+		FirefoxAPIKey:        getEnv("FIREFOX_API_KEY", ""),
+		FirefoxBaseURL:       getEnv("FIREFOX_BASE_URL", "http://www.firefox.fun"),
+		FirefoxTimeout:       time.Duration(getEnvInt("FIREFOX_TIMEOUT_SECONDS", 15)) * time.Second,
 		OrderPollInterval:    time.Duration(getEnvInt("ORDER_POLL_INTERVAL_SECONDS", 8)) * time.Second,
 		OrderTimeout:         time.Duration(getEnvInt("ORDER_TIMEOUT_SECONDS", 1200)) * time.Second,
 		CardExportDir:        getEnv("CARD_EXPORT_DIR", "storage/card_exports"),

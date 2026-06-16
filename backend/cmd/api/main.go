@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"sms-middle-platform/backend/internal/adapter/sms"
+	"sms-middle-platform/backend/internal/adapter/sms/firefox"
 	"sms-middle-platform/backend/internal/adapter/sms/smspool"
 	"sms-middle-platform/backend/internal/config"
 	"sms-middle-platform/backend/internal/database"
@@ -31,6 +32,7 @@ func main() {
 	registry := sms.NewRegistry()
 	supplierLogs := service.NewSupplierLogService(db)
 	registry.Register(smspool.New(cfg.SMSPoolAPIKey, cfg.SMSPoolBaseURL, cfg.SMSPoolTimeout, supplierLogs.Record))
+	registry.Register(firefox.New(cfg.FirefoxAPIKey, cfg.FirefoxBaseURL, cfg.FirefoxTimeout, supplierLogs.Record))
 
 	admins := service.NewAdminService(db, cfg)
 	audit := service.NewAuditService(db)

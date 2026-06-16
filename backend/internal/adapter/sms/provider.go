@@ -62,9 +62,13 @@ type ProviderCountry struct {
 }
 
 type ProviderService struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	Favourite int    `json:"favourite"`
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Favourite   int    `json:"favourite"`
+	CountryID   int    `json:"countryId,omitempty"`
+	CountryName string `json:"countryName,omitempty"`
+	Price       string `json:"price,omitempty"`
+	Stock       int    `json:"stock,omitempty"`
 }
 
 type ProviderPriceInput struct {

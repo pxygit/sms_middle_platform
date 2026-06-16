@@ -39,42 +39,23 @@ func AutoMigrate(db *gorm.DB) error {
 
 func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 	var count int64
-	if err := db.Model(&model.SMSProvider{}).Where("code = ?", "smspool").Count(&count).Error; err != nil {
+	if err := seedProvider(db, cfg.DataEncryptionKey, providerSeed{
+		Code:         "smspool",
+		Name:         "SMSPool",
+		BaseURL:      cfg.SMSPoolBaseURL,
+		CurrencyCode: "USD",
+		APIKey:       cfg.SMSPoolAPIKey,
+	}); err != nil {
 		return err
 	}
-	if count == 0 {
-		capabilities, _ := json.Marshal(map[string]bool{
-			"balance": true,
-			"pricing": true,
-			"stock":   true,
-			"cancel":  true,
-			"polling": true,
-		})
-		if err := db.Create(&model.SMSProvider{
-			Code:         "smspool",
-			Name:         "SMSPool",
-			BaseURL:      cfg.SMSPoolBaseURL,
-			CurrencyCode: "USD",
-			Status:       model.StatusEnabled,
-			Capabilities: capabilities,
-		}).Error; err != nil {
-			return err
-		}
-	}
-	if cfg.SMSPoolAPIKey != "" {
-		var provider model.SMSProvider
-		if err := db.Where("code = ?", "smspool").First(&provider).Error; err == nil && provider.APIKeyCipher == "" {
-			cipherText, err := util.EncryptString(cfg.DataEncryptionKey, cfg.SMSPoolAPIKey)
-			if err != nil {
-				return err
-			}
-			if err := db.Model(&provider).Updates(map[string]interface{}{
-				"api_key_cipher": cipherText,
-				"base_url":       cfg.SMSPoolBaseURL,
-			}).Error; err != nil {
-				return err
-			}
-		}
+	if err := seedProvider(db, cfg.DataEncryptionKey, providerSeed{
+		Code:         "firefox",
+		Name:         "Firefox",
+		BaseURL:      cfg.FirefoxBaseURL,
+		CurrencyCode: "CNY",
+		APIKey:       cfg.FirefoxAPIKey,
+	}); err != nil {
+		return err
 	}
 
 	if err := db.Model(&model.Admin{}).Where("username = ?", cfg.AdminDefaultUsername).Count(&count).Error; err != nil {
@@ -93,4 +74,56 @@ func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 		}).Error
 	}
 	return nil
+}
+
+type providerSeed struct {
+	Code         string
+	Name         string
+	BaseURL      string
+	CurrencyCode string
+	APIKey       string
+}
+
+func seedProvider(db *gorm.DB, encryptionKey string, seed providerSeed) error {
+	var count int64
+	if err := db.Model(&model.SMSProvider{}).Where("code = ?", seed.Code).Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		capabilities, _ := json.Marshal(map[string]bool{
+			"balance": true,
+			"pricing": true,
+			"stock":   true,
+			"cancel":  true,
+			"polling": true,
+		})
+		if err := db.Create(&model.SMSProvider{
+			Code:         seed.Code,
+			Name:         seed.Name,
+			BaseURL:      seed.BaseURL,
+			CurrencyCode: seed.CurrencyCode,
+			Status:       model.StatusEnabled,
+			Capabilities: capabilities,
+		}).Error; err != nil {
+			return err
+		}
+	}
+	if seed.APIKey == "" {
+		return nil
+	}
+	var provider model.SMSProvider
+	if err := db.Where("code = ?", seed.Code).First(&provider).Error; err != nil {
+		return err
+	}
+	if provider.APIKeyCipher != "" {
+		return nil
+	}
+	cipherText, err := util.EncryptString(encryptionKey, seed.APIKey)
+	if err != nil {
+		return err
+	}
+	return db.Model(&provider).Updates(map[string]interface{}{
+		"api_key_cipher": cipherText,
+		"base_url":       seed.BaseURL,
+	}).Error
 }

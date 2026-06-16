@@ -108,6 +108,10 @@ export interface ProviderService {
   id: number;
   name: string;
   favourite: number;
+  countryId?: number;
+  countryName?: string;
+  price?: string;
+  stock?: number;
 }
 
 export interface ProviderPrice {
