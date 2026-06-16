@@ -244,8 +244,15 @@ export function HomePage() {
           </div>
         )}
       </section>
+
+      <PublicFooter />
     </main>
   );
+}
+
+function PublicFooter() {
+  const { i18n, t } = useTranslation();
+  return <footer className="public-footer" key={i18n.resolvedLanguage || i18n.language}>{t('copyright')}</footer>;
 }
 
 function OrderCard({

@@ -29,10 +29,11 @@ input {
 
 .public-shell {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 24px clamp(18px, 4vw, 52px) 44px;
+  overflow-x: clip;
+  padding: 24px clamp(18px, 4vw, 52px) 22px;
   background:
     radial-gradient(circle at 18% 15%, rgba(20, 184, 166, 0.24), transparent 28%),
     radial-gradient(circle at 85% 20%, rgba(96, 165, 250, 0.22), transparent 25%),
@@ -87,7 +88,7 @@ input {
   gap: clamp(24px, 5vw, 80px);
   align-items: center;
   max-width: 1160px;
-  min-height: 48vh;
+  min-height: 40vh;
   margin: 48px auto 28px;
 }
 
@@ -216,6 +217,7 @@ input {
   gap: 20px;
   max-width: 1160px;
   margin: 0 auto;
+  width: 100%;
 }
 
 .order-panel,
@@ -237,7 +239,7 @@ input {
 .empty-state {
   display: grid;
   place-items: center;
-  min-height: 220px;
+  min-height: 170px;
   gap: 12px;
   color: #6b8797;
 }
@@ -320,6 +322,21 @@ input {
   gap: 10px;
   padding: 12px 0;
   border-bottom: 1px solid rgba(125, 148, 164, 0.18);
+}
+
+.public-footer {
+  position: relative;
+  max-width: 1160px;
+  margin: auto auto 0;
+  padding-top: 24px;
+  color: #6b8797;
+  font-size: 13px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+:root[data-theme="dark"] .public-footer {
+  color: #8aa7b8;
 }
 
 .admin-login-shell {

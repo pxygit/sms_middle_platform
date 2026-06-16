@@ -6,6 +6,7 @@ export const resources = {
     translation: {
       brand: '晴码 SMS',
       documentTitle: '晴码 SMS - 验证码接收平台',
+      copyright: 'Copyright © 2026 晴码SMS. 版权所有.',
       subtitle: '输入卡密，获取专属接码号码',
       heroEyebrow: '短信接码平台',
       heroDescription: '快速、清爽，适合一次性验证码接收流程。',
@@ -170,6 +171,7 @@ export const resources = {
     translation: {
       brand: 'Sunny SMS',
       documentTitle: 'Sunny SMS - Verification Code Receive Platform',
+      copyright: 'Copyright © 2026 Sunny SMS. All Rights Reserved.',
       subtitle: 'Enter your code and receive a dedicated SMS number',
       heroEyebrow: 'SMS Receive Platform',
       heroDescription: 'Fast, clean, and ready for one-time verification workflows.',
