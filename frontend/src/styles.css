@@ -30,7 +30,8 @@ input {
 .public-shell {
   position: relative;
   min-height: 100vh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 24px clamp(18px, 4vw, 52px) 44px;
   background:
     radial-gradient(circle at 18% 15%, rgba(20, 184, 166, 0.24), transparent 28%),
@@ -220,6 +221,17 @@ input {
 .order-panel,
 .history-panel {
   padding: 24px;
+}
+
+.orders-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cancel-row {
+  margin-top: 2px;
 }
 
 .empty-state {

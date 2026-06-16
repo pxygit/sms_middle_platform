@@ -13,6 +13,7 @@ import {
   Modal,
   Select,
   Space,
+  Spin,
   Switch,
   Table,
   Tag,
@@ -629,6 +630,7 @@ function ServicesPage() {
               loading={countries.isLoading}
               optionFilterProp="label"
               placeholder={t('selectProviderFirst')}
+              notFoundContent={countries.isLoading ? <Space><Spin size="small" />{t('syncingProviderCountries')}</Space> : null}
               onChange={onCountryChange}
               options={(countries.data || []).map((item: ProviderCountry) => ({
                 label: countryLabel(item),
@@ -643,6 +645,7 @@ function ServicesPage() {
               disabled={!countryId}
               optionFilterProp="label"
               placeholder={t('selectCountryFirst')}
+              notFoundContent={services.isLoading ? <Space><Spin size="small" />{t('syncingProviderServices')}</Space> : null}
               onChange={onServiceChange}
               options={(services.data || []).map((item: ProviderService) => ({
                 label: serviceLabel(item),

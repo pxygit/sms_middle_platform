@@ -44,8 +44,8 @@ func (s *OrderService) Create(ctx context.Context, cardCode string) (*model.Rece
 			Count(&activeCount).Error; err != nil {
 			return err
 		}
-		if activeCount > 0 {
-			return errors.New("this card already has an unfinished order")
+		if activeCount >= int64(card.RemainingUses) {
+			return errors.New("card code has no remaining uses")
 		}
 
 		order = model.ReceiveOrder{
