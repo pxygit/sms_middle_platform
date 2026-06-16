@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"sms-middle-platform/backend/internal/adapter/sms"
@@ -22,6 +23,7 @@ type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	logger     func(model.SupplierRequestLog)
+	mu         sync.RWMutex
 }
 
 func New(apiKey, baseURL string, timeout time.Duration, logger func(model.SupplierRequestLog)) *Client {
@@ -37,6 +39,17 @@ func New(apiKey, baseURL string, timeout time.Duration, logger func(model.Suppli
 
 func (c *Client) Name() string {
 	return "smspool"
+}
+
+func (c *Client) Configure(apiKey, baseURL string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if apiKey != "" {
+		c.apiKey = apiKey
+	}
+	if baseURL != "" {
+		c.baseURL = strings.TrimRight(baseURL, "/")
+	}
 }
 
 func (c *Client) GetCountries(ctx context.Context) ([]sms.ProviderCountry, error) {
@@ -101,7 +114,7 @@ func (c *Client) GetServices(ctx context.Context, countryID string) ([]sms.Provi
 
 func (c *Client) GetPrice(ctx context.Context, input sms.ProviderPriceInput) (*sms.ProviderPrice, error) {
 	form := url.Values{
-		"key":     {c.apiKey},
+		"key":     {""},
 		"country": {input.CountryID},
 		"service": {input.ServiceID},
 	}
@@ -136,7 +149,7 @@ func (c *Client) GetPrice(ctx context.Context, input sms.ProviderPriceInput) (*s
 
 func (c *Client) GetStock(ctx context.Context, input sms.ProviderStockInput) (*sms.ProviderStock, error) {
 	form := url.Values{
-		"key":     {c.apiKey},
+		"key":     {""},
 		"country": {input.CountryID},
 		"service": {input.ServiceID},
 	}
@@ -167,7 +180,7 @@ func (c *Client) GetBalance(ctx context.Context) (*sms.ProviderBalance, error) {
 	var out struct {
 		Balance string `json:"balance"`
 	}
-	raw, status, err := c.postForm(ctx, "/request/balance", url.Values{"key": {c.apiKey}})
+	raw, status, err := c.postForm(ctx, "/request/balance", url.Values{"key": {""}})
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +195,7 @@ func (c *Client) GetBalance(ctx context.Context) (*sms.ProviderBalance, error) {
 
 func (c *Client) RequestNumber(ctx context.Context, input sms.RequestNumberInput) (*sms.RequestNumberResult, error) {
 	form := url.Values{
-		"key":             {c.apiKey},
+		"key":             {""},
 		"country":         {input.CountryID},
 		"service":         {input.ServiceID},
 		"quantity":        {"1"},
@@ -249,7 +262,7 @@ func (c *Client) RequestNumber(ctx context.Context, input sms.RequestNumberInput
 
 func (c *Client) CheckSMS(ctx context.Context, input sms.CheckSMSInput) (*sms.SMSResult, error) {
 	raw, status, err := c.postForm(ctx, "/sms/check", url.Values{
-		"key":     {c.apiKey},
+		"key":     {""},
 		"orderid": {input.SupplierOrderID},
 	})
 	if err != nil {
@@ -291,7 +304,7 @@ func (c *Client) CheckSMS(ctx context.Context, input sms.CheckSMSInput) (*sms.SM
 
 func (c *Client) CancelNumber(ctx context.Context, input sms.CancelNumberInput) (*sms.CancelResult, error) {
 	raw, status, err := c.postForm(ctx, "/sms/cancel", url.Values{
-		"key":     {c.apiKey},
+		"key":     {""},
 		"orderid": {input.SupplierOrderID},
 	})
 	if err != nil {
@@ -314,6 +327,10 @@ func (c *Client) CancelNumber(ctx context.Context, input sms.CancelNumberInput) 
 }
 
 func (c *Client) postForm(ctx context.Context, path string, form url.Values) ([]byte, int, error) {
+	apiKey, baseURL := c.config()
+	if _, ok := form["key"]; ok {
+		form.Set("key", apiKey)
+	}
 	requestBody := &bytes.Buffer{}
 	writer := multipart.NewWriter(requestBody)
 	for key, values := range form {
@@ -326,14 +343,14 @@ func (c *Client) postForm(ctx context.Context, path string, form url.Values) ([]
 	if err := writer.Close(); err != nil {
 		return nil, 0, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, requestBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+path, requestBody)
 	if err != nil {
 		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Accept", "application/json")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	start := time.Now()
 	resp, err := c.httpClient.Do(req)
@@ -352,7 +369,8 @@ func (c *Client) postForm(ctx context.Context, path string, form url.Values) ([]
 }
 
 func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte, int, error) {
-	target := c.baseURL + path
+	apiKey, baseURL := c.config()
+	target := baseURL + path
 	if len(query) > 0 {
 		target += "?" + query.Encode()
 	}
@@ -361,8 +379,8 @@ func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte
 		return nil, 0, err
 	}
 	req.Header.Set("Accept", "application/json")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	start := time.Now()
 	resp, err := c.httpClient.Do(req)
@@ -378,6 +396,12 @@ func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte
 	}
 	c.log(path, query, resp.StatusCode, resp.StatusCode < 400, "", "", time.Since(start), responseBody)
 	return responseBody, resp.StatusCode, nil
+}
+
+func (c *Client) config() (string, string) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.apiKey, c.baseURL
 }
 
 func (c *Client) log(action string, form url.Values, status int, success bool, code, message string, latency time.Duration, body []byte) {

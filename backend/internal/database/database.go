@@ -5,6 +5,7 @@ import (
 
 	"sms-middle-platform/backend/internal/config"
 	"sms-middle-platform/backend/internal/model"
+	"sms-middle-platform/backend/internal/util"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
@@ -53,10 +54,26 @@ func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 			Code:         "smspool",
 			Name:         "SMSPool",
 			BaseURL:      cfg.SMSPoolBaseURL,
+			CurrencyCode: "USD",
 			Status:       model.StatusEnabled,
 			Capabilities: capabilities,
 		}).Error; err != nil {
 			return err
+		}
+	}
+	if cfg.SMSPoolAPIKey != "" {
+		var provider model.SMSProvider
+		if err := db.Where("code = ?", "smspool").First(&provider).Error; err == nil && provider.APIKeyCipher == "" {
+			cipherText, err := util.EncryptString(cfg.DataEncryptionKey, cfg.SMSPoolAPIKey)
+			if err != nil {
+				return err
+			}
+			if err := db.Model(&provider).Updates(map[string]interface{}{
+				"api_key_cipher": cipherText,
+				"base_url":       cfg.SMSPoolBaseURL,
+			}).Error; err != nil {
+				return err
+			}
 		}
 	}
 

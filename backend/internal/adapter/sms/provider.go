@@ -107,3 +107,7 @@ type MetadataProvider interface {
 	GetPrice(ctx context.Context, input ProviderPriceInput) (*ProviderPrice, error)
 	GetStock(ctx context.Context, input ProviderStockInput) (*ProviderStock, error)
 }
+
+type ConfigurableProvider interface {
+	Configure(apiKey, baseURL string)
+}

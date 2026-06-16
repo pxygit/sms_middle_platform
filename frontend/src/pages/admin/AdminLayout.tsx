@@ -28,6 +28,7 @@ import {
   Eye,
   EyeOff,
   Pencil,
+  Radar,
   Home,
   KeyRound,
   LockKeyhole,
@@ -64,15 +65,17 @@ import {
   listProviders,
   listServiceConfigs,
   revealCardCode,
+  updateProvider,
   updateServiceConfig,
   updateCardStatus,
 } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { formatDateTime } from '../../utils/format';
-import type { DashboardRank, ProviderCountry, ProviderService } from '../../types/api';
+import type { DashboardRank, ProviderCountry, ProviderService, SMSProvider } from '../../types/api';
 import { statusColor } from '../../utils/status';
 
 const { Header, Sider, Content } = Layout;
+const currencyOptions = ['USD', 'CNY', 'EUR', 'GBP', 'HKD', 'JPY', 'USDT'];
 
 export function AdminLayout() {
   const token = localStorage.getItem('adminToken');
@@ -115,6 +118,7 @@ export function AdminLayout() {
           inlineCollapsed={collapsed}
           items={[
             { key: 'dashboard', icon: <Home size={18} />, label: <Link to="/admin">{t('dashboard')}</Link> },
+            { key: 'providers', icon: <Database size={18} />, label: <Link to="/admin/providers">{t('providers')}</Link> },
             { key: 'services', icon: <Settings2 size={18} />, label: <Link to="/admin/services">{t('serviceConfigs')}</Link> },
             { key: 'batches', icon: <Boxes size={18} />, label: <Link to="/admin/batches">{t('cardBatches')}</Link> },
             { key: 'cards', icon: <KeyRound size={18} />, label: <Link to="/admin/cards">{t('cardCodes')}</Link> },
@@ -138,6 +142,7 @@ export function AdminLayout() {
         <Content className="admin-content">
           <Routes>
             <Route index element={<Dashboard />} />
+            <Route path="providers" element={<ProvidersPage />} />
             <Route path="services" element={<ServicesPage />} />
             <Route path="batches" element={<BatchesPage />} />
             <Route path="cards" element={<CardsPage />} />
@@ -241,7 +246,7 @@ function BalancePanel({
               <div className="balance-card" key={provider.code}>
                 <div>
                   <span>{provider.name || provider.code}</span>
-                  <strong>{result.error ? t('checkFailed') : result.balance || '--'}</strong>
+                  <strong>{result.error ? t('checkFailed') : formatMoney(result.balance, provider.currencyCode)}</strong>
                   {result.checkedAt && <small>{formatDateTime(result.checkedAt)}</small>}
                   {result.error && <em>{result.error}</em>}
                 </div>
@@ -293,6 +298,130 @@ function RankPanel({ title, rows, loading, translateName = false }: { title: str
   );
 }
 
+function ProvidersPage() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<SMSProvider | null>(null);
+  const [keyword, setKeyword] = useState('');
+  const [balances, setBalances] = useState<Record<string, { balance?: string; error?: string; checkedAt?: string }>>({});
+  const [form] = Form.useForm();
+  const query = useQuery({ queryKey: ['providers'], queryFn: listProviders });
+  const rows = filterRows(query.data || [], keyword);
+  const mutation = useMutation({
+    mutationFn: ({ code, values }: { code: string; values: any }) => updateProvider(code, values),
+    onSuccess: () => {
+      form.resetFields();
+      setEditing(null);
+      setOpen(false);
+      void qc.invalidateQueries({ queryKey: ['providers'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+  const balanceMutation = useMutation({
+    mutationFn: async (provider: SMSProvider) => {
+      const checkedAt = new Date().toISOString();
+      try {
+        const data = await getProviderBalance(provider.code);
+        return { code: provider.code, result: { balance: data.balance, checkedAt } };
+      } catch (error: any) {
+        return { code: provider.code, result: { error: error?.message || t('balanceCheckFailed'), checkedAt } };
+      }
+    },
+    onSuccess: ({ code, result }) => setBalances((current) => ({ ...current, [code]: result })),
+  });
+
+  const openEdit = (record: SMSProvider) => {
+    setEditing(record);
+    form.setFieldsValue({ ...record, apiKey: '' });
+    setOpen(true);
+  };
+
+  return (
+    <div className="admin-page">
+      <PageHead title={t('providers')} searchValue={keyword} onSearchChange={setKeyword} onRefresh={() => query.refetch()} />
+      <Table
+        className="center-table"
+        scroll={{ x: 'max-content' }}
+        rowKey="code"
+        dataSource={rows}
+        loading={query.isLoading}
+        pagination={tablePagination(t)}
+        columns={[
+          centerColumn({ title: t('providerCode'), dataIndex: 'code' }),
+          centerColumn({ title: t('providerName'), dataIndex: 'name' }),
+          centerColumn({ title: t('baseUrl'), dataIndex: 'baseUrl', width: 260 }),
+          centerColumn({ title: t('currencyCode'), dataIndex: 'currencyCode' }),
+          centerColumn({ title: t('apiKey'), dataIndex: 'apiKeySet', render: (value: boolean) => <Tag color={value ? 'green' : 'orange'}>{value ? t('configured') : t('notConfigured')}</Tag> }),
+          centerColumn({
+            title: t('providerBalance'),
+            width: 170,
+            render: (_: unknown, row: SMSProvider) => {
+              const result = balances[row.code];
+              if (!result) return <span>--</span>;
+              if (result.error) return <Tooltip title={result.error}><Tag color="red">{t('checkFailed')}</Tag></Tooltip>;
+              return (
+                <Space direction="vertical" size={0}>
+                  <strong>{formatMoney(result.balance, row.currencyCode)}</strong>
+                  {result.checkedAt && <small>{formatDateTime(result.checkedAt)}</small>}
+                </Space>
+              );
+            },
+          }),
+          centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
+          centerColumn({ title: t('updatedAt'), dataIndex: 'updatedAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.updatedAt, b.updatedAt) }),
+          centerColumn({
+            title: t('actions'),
+            render: (_: unknown, row: SMSProvider) => (
+              <Space>
+                <Tooltip title={t('checkProvider')}>
+                  <Button
+                    size="small"
+                    shape="circle"
+                    icon={<Radar size={15} />}
+                    loading={balanceMutation.isPending}
+                    onClick={() => balanceMutation.mutate(row)}
+                  />
+                </Tooltip>
+                <Tooltip title={t('edit')}>
+                  <Button size="small" shape="circle" icon={<Pencil size={15} />} onClick={() => openEdit(row)} />
+                </Tooltip>
+              </Space>
+            ),
+          }),
+        ]}
+      />
+      <Modal title={t('providerSettings')} open={open} footer={null} onCancel={() => setOpen(false)} width={640}>
+        <Alert className="form-help" type="info" showIcon message={t('providerSettingsHelp')} />
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values) => editing && mutation.mutate({ code: editing.code, values })}
+        >
+          <Form.Item name="name" label={t('providerName')} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="baseUrl" label={t('baseUrl')} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="currencyCode" label={t('currencyCode')} rules={[{ required: true }]}>
+            <Select showSearch options={currencyOptions.map((value) => ({ label: value, value }))} />
+          </Form.Item>
+          <Form.Item name="apiKey" label={t('apiKey')} tooltip={t('apiKeyHelp')}>
+            <Input.Password placeholder={editing?.apiKeySet ? t('leaveBlankToKeep') : undefined} />
+          </Form.Item>
+          <Form.Item name="status" label={t('status')}>
+            <Select options={['enabled', 'disabled'].map((item) => ({ label: t(item), value: item }))} />
+          </Form.Item>
+          <Button htmlType="submit" type="primary" shape="round" loading={mutation.isPending}>
+            {t('save')}
+          </Button>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
+
 function ServicesPage() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -306,6 +435,7 @@ function ServicesPage() {
   const poolId = Form.useWatch('providerPoolId', form);
   const query = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
+  const currencyByProvider = providerCurrencyMap(providers.data || []);
   const countries = useQuery({
     queryKey: ['provider-countries', providerCode],
     queryFn: () => listProviderCountries(providerCode),
@@ -388,7 +518,7 @@ function ServicesPage() {
           centerColumn({ title: t('country'), render: (_: unknown, row: any) => row.countryName || row.countryCode }),
           centerColumn({ title: t('service'), dataIndex: 'displayName' }),
           centerColumn({ title: t('providerServiceId'), dataIndex: 'providerServiceId' }),
-          centerColumn({ title: t('maxPrice'), dataIndex: 'maxPrice' }),
+          centerColumn({ title: t('maxPrice'), render: (_: unknown, row: any) => formatMoney(row.maxPrice, currencyByProvider[row.providerCode]) }),
           centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
           centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
           centerColumn({
@@ -667,7 +797,9 @@ function OrdersPage() {
   const { t } = useTranslation();
   const [keyword, setKeyword] = useState('');
   const query = useQuery({ queryKey: ['orders'], queryFn: listOrders, refetchInterval: 8000 });
+  const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
   const rows = filterRows(query.data || [], keyword);
+  const currencyByProvider = providerCurrencyMap(providers.data || []);
   return (
     <div className="admin-page">
       <PageHead title={t('orders')} searchValue={keyword} onSearchChange={setKeyword} onRefresh={() => query.refetch()} />
@@ -685,7 +817,7 @@ function OrdersPage() {
           centerColumn({ title: t('phoneNumber'), dataIndex: 'phoneNumber' }),
           centerColumn({ title: t('verificationCode'), dataIndex: 'verificationCode' }),
           centerColumn({ title: t('supplierOrderId'), dataIndex: 'supplierOrderId' }),
-          centerColumn({ title: t('cost'), dataIndex: 'cost' }),
+          centerColumn({ title: t('cost'), render: (_: unknown, row: any) => formatMoney(row.cost, currencyByProvider[row.providerCode]) }),
           centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
           centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
           centerColumn({ title: t('updatedAt'), dataIndex: 'updatedAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.updatedAt, b.updatedAt) }),
@@ -890,6 +1022,21 @@ function dateSorter(left?: string | null, right?: string | null) {
 
 function serviceKeyById(services: any[], id: number) {
   return services.find((item) => item.id === id)?.targetPlatform || id || '-';
+}
+
+function providerCurrencyMap(providers: SMSProvider[]) {
+  return providers.reduce<Record<string, string>>((result, provider) => {
+    result[provider.code] = provider.currencyCode || 'USD';
+    return result;
+  }, {});
+}
+
+function formatMoney(value?: string | number | null, currency = 'USD') {
+  if (value === undefined || value === null || value === '') return '--';
+  const numeric = Number(value);
+  const normalizedCurrency = currency || 'USD';
+  if (!Number.isFinite(numeric)) return `${value} ${normalizedCurrency}`;
+  return `${numeric.toFixed(4).replace(/\.?0+$/, '')} ${normalizedCurrency}`;
 }
 
 function filterRows<T>(rows: T[], keyword: string) {

@@ -10,6 +10,7 @@ import type {
   ProviderService,
   ProviderStock,
   ReceiveOrder,
+  SMSProvider,
   ServiceConfig,
 } from '../types/api';
 
@@ -22,7 +23,11 @@ export function changePassword(oldPassword: string, newPassword: string) {
 }
 
 export function listProviders() {
-  return unwrap<any[]>(api.get('/admin/providers'));
+  return unwrap<SMSProvider[]>(api.get('/admin/providers'));
+}
+
+export function updateProvider(provider: string, payload: Partial<SMSProvider> & { apiKey?: string }) {
+  return unwrap<SMSProvider>(api.patch(`/admin/providers/${provider}`, payload));
 }
 
 export function listProviderCountries(provider: string) {

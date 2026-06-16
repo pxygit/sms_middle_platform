@@ -30,6 +30,27 @@ func (h *CatalogHandler) Providers(c *gin.Context) {
 	response.OK(c, providers)
 }
 
+func (h *CatalogHandler) UpdateProvider(c *gin.Context) {
+	var req service.ProviderInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid provider payload")
+		return
+	}
+	provider, err := h.catalog.UpdateProvider(c.Param("provider"), req)
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	h.audit.Record("admin", adminID(c), "provider.update", "provider", c.Param("provider"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"name":         req.Name,
+		"baseUrl":      req.BaseURL,
+		"currencyCode": req.CurrencyCode,
+		"status":       req.Status,
+		"apiKeySet":    req.APIKey != "",
+	})
+	response.OK(c, provider)
+}
+
 func (h *CatalogHandler) ListServiceConfigs(c *gin.Context) {
 	configs, err := h.catalog.ListServiceConfigs()
 	if err != nil {

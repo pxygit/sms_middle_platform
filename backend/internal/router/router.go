@@ -71,6 +71,7 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		protected.POST("/auth/password", authHandler.ChangePassword)
 		protected.GET("/dashboard", dashboardHandler.Stats)
 		protected.GET("/providers", catalogHandler.Providers)
+		protected.PATCH("/providers/:provider", catalogHandler.UpdateProvider)
 		protected.GET("/providers/:provider/countries", catalogHandler.ProviderCountries)
 		protected.GET("/providers/:provider/services", catalogHandler.ProviderServices)
 		protected.GET("/providers/:provider/price", catalogHandler.ProviderPrice)

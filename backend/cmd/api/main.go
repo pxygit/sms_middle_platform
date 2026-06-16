@@ -34,7 +34,10 @@ func main() {
 
 	admins := service.NewAdminService(db, cfg)
 	audit := service.NewAuditService(db)
-	catalog := service.NewCatalogService(db)
+	catalog := service.NewCatalogService(db, cfg.DataEncryptionKey, registry)
+	if err := catalog.ConfigureRuntimeProviders(); err != nil {
+		log.Fatalf("configure providers: %v", err)
+	}
 	meta := service.NewProviderMetadataService(registry)
 	cards := service.NewCardService(db, cfg.CardExportDir, cfg.DataEncryptionKey)
 	orders := service.NewOrderService(db, registry)

@@ -19,6 +19,18 @@ export interface ServiceConfig {
   status: string;
 }
 
+export interface SMSProvider {
+  id: number;
+  code: string;
+  name: string;
+  baseUrl: string;
+  currencyCode: string;
+  status: string;
+  apiKeySet: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CardVerifyResult {
   codeMask: string;
   remainingUses: number;

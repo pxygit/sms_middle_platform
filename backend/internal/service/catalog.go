@@ -2,14 +2,27 @@ package service
 
 import (
 	"errors"
+	"strings"
 
+	"sms-middle-platform/backend/internal/adapter/sms"
 	"sms-middle-platform/backend/internal/model"
+	"sms-middle-platform/backend/internal/util"
 
 	"gorm.io/gorm"
 )
 
 type CatalogService struct {
-	db *gorm.DB
+	db            *gorm.DB
+	encryptionKey string
+	registry      *sms.Registry
+}
+
+type ProviderInput struct {
+	Name         string `json:"name" binding:"required"`
+	BaseURL      string `json:"baseUrl"`
+	CurrencyCode string `json:"currencyCode"`
+	APIKey       string `json:"apiKey"`
+	Status       string `json:"status"`
 }
 
 type ServiceConfigInput struct {
@@ -26,14 +39,84 @@ type ServiceConfigInput struct {
 	Status            string  `json:"status"`
 }
 
-func NewCatalogService(db *gorm.DB) *CatalogService {
-	return &CatalogService{db: db}
+func NewCatalogService(db *gorm.DB, encryptionKey string, registry *sms.Registry) *CatalogService {
+	return &CatalogService{db: db, encryptionKey: encryptionKey, registry: registry}
 }
 
 func (s *CatalogService) Providers() ([]model.SMSProvider, error) {
 	var providers []model.SMSProvider
 	err := s.db.Order("id asc").Find(&providers).Error
+	for index := range providers {
+		providers[index].APIKeySet = providers[index].APIKeyCipher != ""
+	}
 	return providers, err
+}
+
+func (s *CatalogService) UpdateProvider(code string, input ProviderInput) (*model.SMSProvider, error) {
+	var provider model.SMSProvider
+	if err := s.db.Where("code = ?", code).First(&provider).Error; err != nil {
+		return nil, err
+	}
+	currency := strings.ToUpper(strings.TrimSpace(input.CurrencyCode))
+	if currency == "" {
+		currency = "USD"
+	}
+	status := input.Status
+	if status == "" {
+		status = model.StatusEnabled
+	}
+	updates := map[string]interface{}{
+		"name":          input.Name,
+		"base_url":      strings.TrimSpace(input.BaseURL),
+		"currency_code": currency,
+		"status":        status,
+	}
+	if strings.TrimSpace(input.APIKey) != "" {
+		cipherText, err := util.EncryptString(s.encryptionKey, strings.TrimSpace(input.APIKey))
+		if err != nil {
+			return nil, err
+		}
+		updates["api_key_cipher"] = cipherText
+	}
+	if err := s.db.Model(&provider).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.First(&provider, provider.ID).Error; err != nil {
+		return nil, err
+	}
+	if err := s.configureRuntime(provider); err != nil {
+		return nil, err
+	}
+	provider.APIKeySet = provider.APIKeyCipher != ""
+	return &provider, nil
+}
+
+func (s *CatalogService) ConfigureRuntimeProviders() error {
+	var providers []model.SMSProvider
+	if err := s.db.Find(&providers).Error; err != nil {
+		return err
+	}
+	for _, provider := range providers {
+		if err := s.configureRuntime(provider); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *CatalogService) configureRuntime(provider model.SMSProvider) error {
+	apiKey := ""
+	if provider.APIKeyCipher != "" {
+		plain, err := util.DecryptString(s.encryptionKey, provider.APIKeyCipher)
+		if err != nil {
+			return err
+		}
+		apiKey = plain
+	}
+	if s.registry == nil {
+		return nil
+	}
+	return s.registry.Configure(provider.Code, apiKey, provider.BaseURL)
 }
 
 func (s *CatalogService) ListServiceConfigs() ([]model.ServiceConfig, error) {

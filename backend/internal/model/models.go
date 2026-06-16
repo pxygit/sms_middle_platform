@@ -38,10 +38,13 @@ type SMSProvider struct {
 	Code         string         `gorm:"size:64;uniqueIndex;not null" json:"code"`
 	Name         string         `gorm:"size:128;not null" json:"name"`
 	BaseURL      string         `gorm:"size:255" json:"baseUrl"`
+	CurrencyCode string         `gorm:"size:8;not null;default:USD" json:"currencyCode"`
+	APIKeyCipher string         `gorm:"type:text" json:"-"`
 	Status       string         `gorm:"size:32;not null;default:enabled" json:"status"`
 	Capabilities datatypes.JSON `gorm:"type:jsonb" json:"capabilities"`
 	CreatedAt    time.Time      `json:"createdAt"`
 	UpdatedAt    time.Time      `json:"updatedAt"`
+	APIKeySet    bool           `gorm:"-" json:"apiKeySet"`
 }
 
 func (SMSProvider) TableName() string { return "sys_sms_providers" }

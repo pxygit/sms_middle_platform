@@ -21,3 +21,16 @@ func (r *Registry) Get(name string) (SMSProvider, error) {
 	}
 	return provider, nil
 }
+
+func (r *Registry) Configure(name, apiKey, baseURL string) error {
+	provider, err := r.Get(name)
+	if err != nil {
+		return err
+	}
+	configurable, ok := provider.(ConfigurableProvider)
+	if !ok {
+		return fmt.Errorf("sms provider %s does not support runtime configuration", name)
+	}
+	configurable.Configure(apiKey, baseURL)
+	return nil
+}
