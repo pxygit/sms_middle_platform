@@ -29,6 +29,9 @@ type Config struct {
 	SMSBowerAPIKey       string
 	SMSBowerBaseURL      string
 	SMSBowerTimeout      time.Duration
+	LubanSMSAPIKey       string
+	LubanSMSBaseURL      string
+	LubanSMSTimeout      time.Duration
 	OrderPollInterval    time.Duration
 	OrderTimeout         time.Duration
 	CardExportDir        string
@@ -58,6 +61,9 @@ func Load() Config {
 		SMSBowerAPIKey:       getEnv("SMSBOWER_API_KEY", ""),
 		SMSBowerBaseURL:      getEnv("SMSBOWER_BASE_URL", "https://smsbower.page"),
 		SMSBowerTimeout:      time.Duration(getEnvInt("SMSBOWER_TIMEOUT_SECONDS", 15)) * time.Second,
+		LubanSMSAPIKey:       getEnv("LUBANSMS_API_KEY", ""),
+		LubanSMSBaseURL:      getEnv("LUBANSMS_BASE_URL", "https://lubansms.com"),
+		LubanSMSTimeout:      time.Duration(getEnvInt("LUBANSMS_TIMEOUT_SECONDS", 15)) * time.Second,
 		OrderPollInterval:    time.Duration(getEnvInt("ORDER_POLL_INTERVAL_SECONDS", 8)) * time.Second,
 		OrderTimeout:         time.Duration(getEnvInt("ORDER_TIMEOUT_SECONDS", 1200)) * time.Second,
 		CardExportDir:        getEnv("CARD_EXPORT_DIR", "storage/card_exports"),

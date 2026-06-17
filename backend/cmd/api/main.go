@@ -9,6 +9,7 @@ import (
 	"sms-middle-platform/backend/internal/adapter/sms"
 	"sms-middle-platform/backend/internal/adapter/sms/firefox"
 	"sms-middle-platform/backend/internal/adapter/sms/herosms"
+	"sms-middle-platform/backend/internal/adapter/sms/lubansms"
 	"sms-middle-platform/backend/internal/adapter/sms/smsbower"
 	"sms-middle-platform/backend/internal/adapter/sms/smspool"
 	"sms-middle-platform/backend/internal/config"
@@ -37,6 +38,7 @@ func main() {
 	registry.Register(firefox.New(cfg.FirefoxAPIKey, cfg.FirefoxBaseURL, cfg.FirefoxTimeout, supplierLogs.Record))
 	registry.Register(herosms.New(cfg.HeroSMSAPIKey, cfg.HeroSMSBaseURL, cfg.HeroSMSTimeout, supplierLogs.Record))
 	registry.Register(smsbower.New(cfg.SMSBowerAPIKey, cfg.SMSBowerBaseURL, cfg.SMSBowerTimeout, supplierLogs.Record))
+	registry.Register(lubansms.New(cfg.LubanSMSAPIKey, cfg.LubanSMSBaseURL, cfg.LubanSMSTimeout, supplierLogs.Record))
 
 	admins := service.NewAdminService(db, cfg)
 	audit := service.NewAuditService(db)
