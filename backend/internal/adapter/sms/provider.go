@@ -3,10 +3,12 @@ package sms
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
 
 type ProviderBalance struct {
-	Balance string `json:"balance"`
+	Balance   string     `json:"balance"`
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
 }
 
 type RequestNumberInput struct {

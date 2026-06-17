@@ -27,6 +27,8 @@ export interface SMSProvider {
   currencyCode: string;
   status: string;
   apiKeySet: boolean;
+  lastBalance?: string;
+  lastBalanceCheckedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -139,6 +141,7 @@ export interface ProviderQuote {
 
 export interface ProviderBalance {
   balance: string;
+  checkedAt?: string;
 }
 
 export interface DashboardRank {

@@ -96,7 +96,21 @@ func (s *ProviderMetadataService) Balance(ctx context.Context, providerCode stri
 	if err != nil {
 		return nil, err
 	}
-	return provider.GetBalance(ctx)
+	balance, err := provider.GetBalance(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	if err := s.db.Model(&model.SMSProvider{}).
+		Where("code = ?", providerCode).
+		Updates(map[string]interface{}{
+			"last_balance":            balance.Balance,
+			"last_balance_checked_at": now,
+		}).Error; err != nil {
+		return nil, err
+	}
+	balance.CheckedAt = &now
+	return balance, nil
 }
 
 func (s *ProviderMetadataService) SyncAll(ctx context.Context) error {

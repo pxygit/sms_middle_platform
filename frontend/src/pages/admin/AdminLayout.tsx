@@ -165,12 +165,12 @@ function Dashboard() {
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
   const checkProviderBalance = async (provider: SMSProvider) => {
     setCheckingProviders((current) => ({ ...current, [provider.code]: true }));
-    const checkedAt = new Date().toISOString();
     try {
       const data = await getProviderBalance(provider.code);
-      setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt } }));
+      setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt: data.checkedAt || new Date().toISOString() } }));
+      void providers.refetch();
     } catch (error: any) {
-      setBalances((current) => ({ ...current, [provider.code]: { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt } }));
+      setBalances((current) => ({ ...current, [provider.code]: { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt: new Date().toISOString() } }));
     } finally {
       setCheckingProviders((current) => ({ ...current, [provider.code]: false }));
     }
@@ -178,21 +178,23 @@ function Dashboard() {
   const balanceMutation = useMutation({
     mutationFn: async () => {
       const targets = providers.data || [];
-      const checkedAt = new Date().toISOString();
       const results = await Promise.all(
         targets.map(async (provider) => {
           setCheckingProviders((current) => ({ ...current, [provider.code]: true }));
           try {
             const data = await getProviderBalance(provider.code);
-            return [provider.code, { balance: data.balance, checkedAt }] as const;
+            return [provider.code, { balance: data.balance, checkedAt: data.checkedAt || new Date().toISOString() }] as const;
           } catch (error: any) {
-            return [provider.code, { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt }] as const;
+            return [provider.code, { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt: new Date().toISOString() }] as const;
           }
         }),
       );
       return Object.fromEntries(results);
     },
-    onSuccess: (result) => setBalances((current) => ({ ...current, ...result })),
+    onSuccess: (result) => {
+      setBalances((current) => ({ ...current, ...result }));
+      void providers.refetch();
+    },
     onSettled: () => setCheckingProviders({}),
   });
   const data = stats.data;
@@ -263,7 +265,7 @@ function BalancePanel({
           <div className="rank-empty">{t('noData')}</div>
         ) : (
           providers.map((provider) => {
-            const result = balances[provider.code] || {};
+            const result = balances[provider.code] || { balance: provider.lastBalance, checkedAt: provider.lastBalanceCheckedAt };
             return (
               <div className="balance-card" key={provider.code}>
                 <div>
@@ -344,12 +346,12 @@ function ProvidersPage() {
   });
   const checkProviderBalance = async (provider: SMSProvider) => {
     setCheckingProviders((current) => ({ ...current, [provider.code]: true }));
-    const checkedAt = new Date().toISOString();
     try {
       const data = await getProviderBalance(provider.code);
-      setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt } }));
+      setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt: data.checkedAt || new Date().toISOString() } }));
+      void qc.invalidateQueries({ queryKey: ['providers'] });
     } catch (error: any) {
-      setBalances((current) => ({ ...current, [provider.code]: { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt } }));
+      setBalances((current) => ({ ...current, [provider.code]: { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt: new Date().toISOString() } }));
     } finally {
       setCheckingProviders((current) => ({ ...current, [provider.code]: false }));
     }
@@ -408,7 +410,7 @@ function ProvidersPage() {
             title: t('providerBalance'),
             width: 170,
             render: (_: unknown, row: SMSProvider) => {
-              const result = balances[row.code];
+              const result = balances[row.code] || { balance: row.lastBalance, checkedAt: row.lastBalanceCheckedAt };
               if (!result) return <span>--</span>;
               if (result.error) return <Tooltip title={result.error}><Tag color="red">{t('checkFailed')}</Tag></Tooltip>;
               return (
