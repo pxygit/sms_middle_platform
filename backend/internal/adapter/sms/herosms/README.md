@@ -1,3 +1,3 @@
-# herosms adapter placeholder
+# herosms adapter
 
-The provider interface is ready for this adapter, but MVP only implements smspool.
+SMS-Activate style provider adapter for HeroSMS.

@@ -59,6 +59,15 @@ func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 	}); err != nil {
 		return err
 	}
+	if err := seedProvider(db, cfg.DataEncryptionKey, providerSeed{
+		Code:         "herosms",
+		Name:         "HeroSMS",
+		BaseURL:      cfg.HeroSMSBaseURL,
+		CurrencyCode: "USD",
+		APIKey:       cfg.HeroSMSAPIKey,
+	}); err != nil {
+		return err
+	}
 
 	if err := db.Model(&model.Admin{}).Where("username = ?", cfg.AdminDefaultUsername).Count(&count).Error; err != nil {
 		return err

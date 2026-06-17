@@ -23,6 +23,9 @@ type Config struct {
 	FirefoxAPIKey        string
 	FirefoxBaseURL       string
 	FirefoxTimeout       time.Duration
+	HeroSMSAPIKey        string
+	HeroSMSBaseURL       string
+	HeroSMSTimeout       time.Duration
 	OrderPollInterval    time.Duration
 	OrderTimeout         time.Duration
 	CardExportDir        string
@@ -46,6 +49,9 @@ func Load() Config {
 		FirefoxAPIKey:        getEnv("FIREFOX_API_KEY", ""),
 		FirefoxBaseURL:       getEnv("FIREFOX_BASE_URL", "http://www.firefox.fun"),
 		FirefoxTimeout:       time.Duration(getEnvInt("FIREFOX_TIMEOUT_SECONDS", 15)) * time.Second,
+		HeroSMSAPIKey:        getEnv("HEROSMS_API_KEY", ""),
+		HeroSMSBaseURL:       getEnv("HEROSMS_BASE_URL", "https://hero-sms.com"),
+		HeroSMSTimeout:       time.Duration(getEnvInt("HEROSMS_TIMEOUT_SECONDS", 15)) * time.Second,
 		OrderPollInterval:    time.Duration(getEnvInt("ORDER_POLL_INTERVAL_SECONDS", 8)) * time.Second,
 		OrderTimeout:         time.Duration(getEnvInt("ORDER_TIMEOUT_SECONDS", 1200)) * time.Second,
 		CardExportDir:        getEnv("CARD_EXPORT_DIR", "storage/card_exports"),
