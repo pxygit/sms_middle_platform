@@ -68,6 +68,15 @@ func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 	}); err != nil {
 		return err
 	}
+	if err := seedProvider(db, cfg.DataEncryptionKey, providerSeed{
+		Code:         "smsbower",
+		Name:         "SMSBower",
+		BaseURL:      cfg.SMSBowerBaseURL,
+		CurrencyCode: "USD",
+		APIKey:       cfg.SMSBowerAPIKey,
+	}); err != nil {
+		return err
+	}
 
 	if err := db.Model(&model.Admin{}).Where("username = ?", cfg.AdminDefaultUsername).Count(&count).Error; err != nil {
 		return err

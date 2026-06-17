@@ -26,6 +26,9 @@ type Config struct {
 	HeroSMSAPIKey        string
 	HeroSMSBaseURL       string
 	HeroSMSTimeout       time.Duration
+	SMSBowerAPIKey       string
+	SMSBowerBaseURL      string
+	SMSBowerTimeout      time.Duration
 	OrderPollInterval    time.Duration
 	OrderTimeout         time.Duration
 	CardExportDir        string
@@ -52,6 +55,9 @@ func Load() Config {
 		HeroSMSAPIKey:        getEnv("HEROSMS_API_KEY", ""),
 		HeroSMSBaseURL:       getEnv("HEROSMS_BASE_URL", "https://hero-sms.com"),
 		HeroSMSTimeout:       time.Duration(getEnvInt("HEROSMS_TIMEOUT_SECONDS", 15)) * time.Second,
+		SMSBowerAPIKey:       getEnv("SMSBOWER_API_KEY", ""),
+		SMSBowerBaseURL:      getEnv("SMSBOWER_BASE_URL", "https://smsbower.page"),
+		SMSBowerTimeout:      time.Duration(getEnvInt("SMSBOWER_TIMEOUT_SECONDS", 15)) * time.Second,
 		OrderPollInterval:    time.Duration(getEnvInt("ORDER_POLL_INTERVAL_SECONDS", 8)) * time.Second,
 		OrderTimeout:         time.Duration(getEnvInt("ORDER_TIMEOUT_SECONDS", 1200)) * time.Second,
 		CardExportDir:        getEnv("CARD_EXPORT_DIR", "storage/card_exports"),
