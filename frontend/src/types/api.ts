@@ -144,6 +144,19 @@ export interface ProviderBalance {
   checkedAt?: string;
 }
 
+export interface AuditLog {
+  id: number;
+  actorType: string;
+  actorId: number;
+  action: string;
+  resourceType?: string;
+  resourceId?: string;
+  ip?: string;
+  userAgent?: string;
+  metadata?: Record<string, unknown> | string;
+  createdAt: string;
+}
+
 export interface DashboardRank {
   key: string;
   name: string;

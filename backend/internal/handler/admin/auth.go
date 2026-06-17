@@ -34,7 +34,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, err.Error())
 		return
 	}
-	h.audit.Record("admin", result.Admin.ID, "admin.login", "admin", stringID(result.Admin.ID), c.ClientIP(), c.Request.UserAgent(), nil)
+	h.audit.Record("admin", result.Admin.ID, "admin.login", "admin", stringID(result.Admin.ID), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"username": result.Admin.Username,
+		"role":     result.Admin.Role,
+	})
 	response.OK(c, result)
 }
 
@@ -53,6 +56,8 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "admin.change_password", "admin", stringID(adminID(c)), c.ClientIP(), c.Request.UserAgent(), nil)
+	h.audit.Record("admin", adminID(c), "admin.change_password", "admin", stringID(adminID(c)), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"changed": true,
+	})
 	response.OK(c, gin.H{"changed": true})
 }

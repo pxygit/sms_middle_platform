@@ -31,7 +31,14 @@ func (h *CardHandler) CreateBatch(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "card_batch.create", "card_batch", stringID(batch.ID), c.ClientIP(), c.Request.UserAgent(), req)
+	h.audit.Record("admin", adminID(c), "card_batch.create", "card_batch", stringID(batch.ID), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"name":            req.Name,
+		"providerCode":    batch.ProviderCode,
+		"serviceConfigId": req.ServiceConfigID,
+		"quantity":        req.Quantity,
+		"usesPerCode":     req.UsesPerCode,
+		"expiresAt":       req.ExpiresAt,
+	})
 	response.Created(c, batch)
 }
 
@@ -55,7 +62,9 @@ func (h *CardHandler) ExportBatch(c *gin.Context) {
 		response.NotFound(c, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "card_batch.export", "card_batch", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	h.audit.Record("admin", adminID(c), "card_batch.export", "card_batch", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"exported": true,
+	})
 	c.Header("Content-Type", "text/plain; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=card-batch-%d.txt", id))
 	c.String(http.StatusOK, content)
@@ -71,7 +80,9 @@ func (h *CardHandler) DeleteBatch(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "card_batch.delete", "card_batch", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	h.audit.Record("admin", adminID(c), "card_batch.delete", "card_batch", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"deleted": true,
+	})
 	response.OK(c, gin.H{"deleted": true})
 }
 
@@ -101,7 +112,9 @@ func (h *CardHandler) UpdateStatus(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "card.update_status", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), req)
+	h.audit.Record("admin", adminID(c), "card.update_status", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"status": req.Status,
+	})
 	response.OK(c, gin.H{"id": id, "status": req.Status})
 }
 
@@ -115,7 +128,9 @@ func (h *CardHandler) DeleteCard(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "card.delete", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	h.audit.Record("admin", adminID(c), "card.delete", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"deleted": true,
+	})
 	response.OK(c, gin.H{"deleted": true})
 }
 
@@ -130,6 +145,9 @@ func (h *CardHandler) RevealCode(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "card.reveal_code", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	h.audit.Record("admin", adminID(c), "card.reveal_code", "card", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"revealed":  true,
+		"sensitive": true,
+	})
 	response.OK(c, gin.H{"code": code})
 }

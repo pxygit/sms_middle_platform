@@ -39,6 +39,11 @@ func (h *OrderHandler) Cancel(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "order.cancel", "order", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	h.audit.Record("admin", adminID(c), "order.cancel", "order", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"orderNo":         order.OrderNo,
+		"providerCode":    order.ProviderCode,
+		"serviceConfigId": order.ServiceConfigID,
+		"status":          order.Status,
+	})
 	response.OK(c, order)
 }

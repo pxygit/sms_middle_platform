@@ -71,7 +71,17 @@ func (h *CatalogHandler) CreateServiceConfig(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "service_config.create", "service_config", stringID(config.ID), c.ClientIP(), c.Request.UserAgent(), req)
+	h.audit.Record("admin", adminID(c), "service_config.create", "service_config", stringID(config.ID), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"providerCode":      req.ProviderCode,
+		"targetPlatform":    req.TargetPlatform,
+		"displayName":       req.DisplayName,
+		"countryCode":       req.CountryCode,
+		"providerCountryId": req.ProviderCountryID,
+		"providerServiceId": req.ProviderServiceID,
+		"maxPrice":          req.MaxPrice,
+		"timeoutSeconds":    req.TimeoutSeconds,
+		"status":            req.Status,
+	})
 	response.Created(c, config)
 }
 
@@ -91,7 +101,17 @@ func (h *CatalogHandler) UpdateServiceConfig(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "service_config.update", "service_config", stringID(config.ID), c.ClientIP(), c.Request.UserAgent(), req)
+	h.audit.Record("admin", adminID(c), "service_config.update", "service_config", stringID(config.ID), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"providerCode":      req.ProviderCode,
+		"targetPlatform":    req.TargetPlatform,
+		"displayName":       req.DisplayName,
+		"countryCode":       req.CountryCode,
+		"providerCountryId": req.ProviderCountryID,
+		"providerServiceId": req.ProviderServiceID,
+		"maxPrice":          req.MaxPrice,
+		"timeoutSeconds":    req.TimeoutSeconds,
+		"status":            req.Status,
+	})
 	response.OK(c, config)
 }
 
@@ -105,7 +125,9 @@ func (h *CatalogHandler) DeleteServiceConfig(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.audit.Record("admin", adminID(c), "service_config.delete", "service_config", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), nil)
+	h.audit.Record("admin", adminID(c), "service_config.delete", "service_config", c.Param("id"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"deleted": true,
+	})
 	response.OK(c, gin.H{"deleted": true})
 }
 
@@ -172,5 +194,9 @@ func (h *CatalogHandler) ProviderBalance(c *gin.Context) {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	h.audit.Record("admin", adminID(c), "provider.balance_check", "provider", c.Param("provider"), c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"balance":   balance.Balance,
+		"checkedAt": balance.CheckedAt,
+	})
 	response.OK(c, balance)
 }

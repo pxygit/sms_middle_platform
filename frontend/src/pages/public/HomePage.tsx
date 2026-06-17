@@ -235,7 +235,7 @@ export function HomePage() {
           <div className="glass-panel history-panel">
             <div className="section-title">{t('history')}</div>
             {historyQuery.isLoading && <Spin />}
-            {historyQuery.data?.map((item) => (
+            {historyQuery.data?.filter(hasReceivedPhone).map((item) => (
               <div className="history-item" key={item.orderNo}>
                 <span>{formatPhone(item).display || item.orderNo}</span>
                 <Tag color={statusColor(item.status)}>{statusText(item.status, t)}</Tag>
@@ -253,6 +253,10 @@ export function HomePage() {
 function PublicFooter() {
   const { i18n, t } = useTranslation();
   return <footer className="public-footer" key={i18n.resolvedLanguage || i18n.language}>{t('copyright')}</footer>;
+}
+
+function hasReceivedPhone(order: ReceiveOrder) {
+  return Boolean(order.phoneNumber || order.phoneNationalNumber);
 }
 
 function OrderCard({

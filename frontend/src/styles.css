@@ -511,6 +511,26 @@ input {
   white-space: nowrap;
 }
 
+.audit-action-cell {
+  max-width: 220px;
+  align-items: center;
+}
+
+.audit-action-cell small,
+.audit-details-cell {
+  display: inline-block;
+  max-width: 100%;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-theme="dark"] .audit-action-cell small,
+:root[data-theme="dark"] .audit-details-cell {
+  color: #94a3b8;
+}
+
 .admin-stat-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

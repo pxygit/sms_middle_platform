@@ -1,5 +1,6 @@
 import { api, unwrap } from './client';
 import type {
+  AuditLog,
   CardBatch,
   CardCode,
   DashboardStats,
@@ -123,7 +124,7 @@ export function listOrders() {
 }
 
 export function listAuditLogs() {
-  return unwrap<any[]>(api.get('/admin/audit-logs'));
+  return unwrap<AuditLog[]>(api.get('/admin/audit-logs'));
 }
 
 export function getDashboardStats() {

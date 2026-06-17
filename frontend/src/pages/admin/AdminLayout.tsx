@@ -71,7 +71,7 @@ import {
 } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { formatDateTime } from '../../utils/format';
-import type { DashboardRank, ProviderCountry, ProviderPrice, ProviderService, ProviderStock, SMSProvider } from '../../types/api';
+import type { AuditLog, DashboardRank, ProviderCountry, ProviderPrice, ProviderService, ProviderStock, SMSProvider } from '../../types/api';
 import { statusColor } from '../../utils/status';
 import { localizedError } from '../../utils/errors';
 
@@ -309,7 +309,7 @@ function RankPanel({ title, rows, loading, translateName = false }: { title: str
           <div className="rank-row" key={`${row.key}-${index}`}>
             <div className="rank-row-main">
               <span>{index + 1}</span>
-              <b>{translateName ? t(row.name) : row.name}</b>
+              <b>{translateName ? translatedStatus(row.name, t) : row.name}</b>
               <strong>{row.count}</strong>
             </div>
             <div className="rank-track">
@@ -908,9 +908,51 @@ function AuditPage() {
         pagination={tablePagination(t)}
         columns={[
           centerColumn({ title: t('id'), dataIndex: 'id', width: 76 }),
-          centerColumn({ title: t('actions'), dataIndex: 'action' }),
-          centerColumn({ title: t('resource'), dataIndex: 'resourceType' }),
+          centerColumn({
+            title: t('auditAction'),
+            dataIndex: 'action',
+            width: 230,
+            render: (value: string) => (
+              <Space direction="vertical" size={2} className="audit-action-cell">
+                <Tag color="blue">{auditActionLabel(value, t)}</Tag>
+                <small>{auditActionDescription(value, t)}</small>
+              </Space>
+            ),
+          }),
+          centerColumn({
+            title: t('resource'),
+            width: 160,
+            render: (_: unknown, row: AuditLog) => `${auditResourceLabel(row.resourceType, t)}${row.resourceId ? ` #${row.resourceId}` : ''}`,
+          }),
+          centerColumn({
+            title: t('auditActor'),
+            width: 140,
+            render: (_: unknown, row: AuditLog) => `${auditResourceLabel(row.actorType, t)} #${row.actorId || '-'}`,
+          }),
+          centerColumn({
+            title: t('auditDetails'),
+            dataIndex: 'metadata',
+            width: 320,
+            render: (value: AuditLog['metadata']) => {
+              const text = formatAuditMetadata(value);
+              return (
+                <Tooltip title={text}>
+                  <span className="audit-details-cell">{truncateText(text, 96)}</span>
+                </Tooltip>
+              );
+            },
+          }),
           centerColumn({ title: 'IP', dataIndex: 'ip' }),
+          centerColumn({
+            title: t('userAgent'),
+            dataIndex: 'userAgent',
+            width: 260,
+            render: (value: string) => (
+              <Tooltip title={value || '-'}>
+                <span className="audit-details-cell">{truncateText(value || '-', 72)}</span>
+              </Tooltip>
+            ),
+          }),
           centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
         ]}
       />
@@ -1104,7 +1146,66 @@ function RevealableCardCode({ id, masked }: { id: number; masked: string }) {
 
 function StatusTag({ status }: { status: string }) {
   const { t } = useTranslation();
-  return <Tag color={statusColor(status)}>{t(status)}</Tag>;
+  return <Tag color={statusColor(status)}>{translatedStatus(status, t)}</Tag>;
+}
+
+function translatedStatus(status: string, t: (key: string, options?: any) => string) {
+  const statusKey = `status_${status}`;
+  const translated = t(statusKey);
+  if (translated !== statusKey) return translated;
+  const fallback = t(status);
+  return fallback === status ? status : fallback;
+}
+
+function auditActionKey(action: string) {
+  return action.replace(/[.-]/g, '_');
+}
+
+function auditActionLabel(action: string, t: (key: string, options?: any) => string) {
+  const key = `audit_${auditActionKey(action)}`;
+  const translated = t(key);
+  return translated === key ? action : translated;
+}
+
+function auditActionDescription(action: string, t: (key: string, options?: any) => string) {
+  const key = `auditDesc_${auditActionKey(action)}`;
+  const translated = t(key);
+  return translated === key ? '-' : translated;
+}
+
+function auditResourceLabel(resourceType: string | undefined, t: (key: string, options?: any) => string) {
+  if (!resourceType) return '-';
+  const key = `resource_${resourceType}`;
+  const translated = t(key);
+  return translated === key ? resourceType : translated;
+}
+
+function formatAuditMetadata(metadata?: Record<string, unknown> | string) {
+  if (!metadata) return '-';
+  let value: unknown = metadata;
+  if (typeof metadata === 'string') {
+    try {
+      value = JSON.parse(metadata);
+    } catch {
+      return metadata || '-';
+    }
+  }
+  if (!value || typeof value !== 'object') return String(value ?? '-');
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return '-';
+  return entries.map(([key, entry]) => `${key}: ${formatAuditValue(entry)}`).join(' | ');
+}
+
+function formatAuditValue(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '-';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function truncateText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1)}...`;
 }
 
 function centerColumn(column: any) {

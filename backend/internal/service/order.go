@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"sms-middle-platform/backend/internal/adapter/sms"
@@ -118,6 +120,7 @@ func (s *OrderService) GetByCard(ctx context.Context, orderNo, cardCode string) 
 	if err != nil {
 		return nil, errors.New("order not found")
 	}
+	normalizeDisplayCost(&order)
 	return &order, nil
 }
 
@@ -129,10 +132,14 @@ func (s *OrderService) History(cardCode string, limit, offset int) ([]model.Rece
 	var orders []model.ReceiveOrder
 	err := s.db.Preload("ServiceConfig").
 		Where("card_code_id = ?", card.ID).
+		Where("COALESCE(phone_number, '') <> ''").
 		Order("id desc").
 		Limit(limit).
 		Offset(offset).
 		Find(&orders).Error
+	for index := range orders {
+		normalizeDisplayCost(&orders[index])
+	}
 	return orders, err
 }
 
@@ -178,10 +185,14 @@ func (s *OrderService) Cancel(ctx context.Context, orderID uint) (*model.Receive
 
 	now := time.Now()
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.ReceiveOrder{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
+		updates := map[string]interface{}{
 			"status":       model.OrderCancelled,
 			"cancelled_at": now,
-		}).Error; err != nil {
+		}
+		if order.ProviderCode == "firefox" {
+			updates["cost"] = 0
+		}
+		if err := tx.Model(&model.ReceiveOrder{}).Where("id = ?", order.ID).Updates(updates).Error; err != nil {
 			return err
 		}
 		return tx.Model(&model.CardCode{}).
@@ -197,6 +208,9 @@ func (s *OrderService) Cancel(ctx context.Context, orderID uint) (*model.Receive
 func (s *OrderService) List(limit, offset int) ([]model.ReceiveOrder, error) {
 	var orders []model.ReceiveOrder
 	err := s.db.Preload("ServiceConfig").Order("id desc").Limit(limit).Offset(offset).Find(&orders).Error
+	for index := range orders {
+		normalizeDisplayCost(&orders[index])
+	}
 	return orders, err
 }
 
@@ -251,6 +265,9 @@ func (s *OrderService) pollOne(ctx context.Context, order model.ReceiveOrder) er
 		updates["verification_code"] = result.VerificationCode
 		updates["sms_content"] = result.SMSContent
 		updates["received_at"] = now
+		if order.ProviderCode == "firefox" {
+			updates["cost"] = s.firefoxReceivedCost(ctx, order)
+		}
 	case model.OrderCancelled:
 		updates["status"] = model.OrderCancelled
 		updates["cancelled_at"] = now
@@ -270,7 +287,51 @@ func (s *OrderService) getByID(id uint) (*model.ReceiveOrder, error) {
 	if err := s.db.Preload("ServiceConfig").First(&order, id).Error; err != nil {
 		return nil, err
 	}
+	normalizeDisplayCost(&order)
 	return &order, nil
+}
+
+func (s *OrderService) firefoxReceivedCost(ctx context.Context, order model.ReceiveOrder) float64 {
+	if order.Cost > 0 {
+		return order.Cost
+	}
+	provider, err := s.registry.Get(order.ProviderCode)
+	if err == nil {
+		if metadataProvider, ok := provider.(sms.MetadataProvider); ok {
+			price, err := metadataProvider.GetPrice(ctx, sms.ProviderPriceInput{
+				CountryID: order.ServiceConfig.ProviderCountryID,
+				ServiceID: order.ServiceConfig.ProviderServiceID,
+				PoolID:    order.ServiceConfig.ProviderPoolID,
+			})
+			if err == nil {
+				if parsed := parseCost(firstNonEmpty(price.Price, price.LowPrice, price.HighPrice)); parsed > 0 {
+					return parsed
+				}
+			}
+		}
+	}
+	if order.MaxPrice > 0 {
+		return order.MaxPrice
+	}
+	return 0
+}
+
+func normalizeDisplayCost(order *model.ReceiveOrder) {
+	if order.ProviderCode != "firefox" {
+		return
+	}
+	if order.Status != model.OrderSMSReceived {
+		order.Cost = 0
+		return
+	}
+	if order.Cost <= 0 && order.MaxPrice > 0 {
+		order.Cost = order.MaxPrice
+	}
+}
+
+func parseCost(value string) float64 {
+	parsed, _ := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	return parsed
 }
 
 func validateCard(card model.CardCode) error {
