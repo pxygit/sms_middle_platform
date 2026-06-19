@@ -36,6 +36,11 @@ type CheckSMSInput struct {
 	SupplierOrderID string
 }
 
+type ManualSMSInput struct {
+	SupplierOrderID string
+	SupplierToken   string
+}
+
 type SMSResult struct {
 	Status           string
 	SupplierStatus   string
@@ -108,6 +113,12 @@ type ProviderQuote struct {
 	Stock *ProviderStock `json:"stock,omitempty"`
 }
 
+type ProviderKind struct {
+	Kind               string `json:"kind"`
+	ManualCheck        bool   `json:"manualCheck"`
+	MessageURLTemplate string `json:"messageUrlTemplate,omitempty"`
+}
+
 type ProviderCatalog struct {
 	Countries []ProviderCountry
 	Services  []ProviderService
@@ -134,4 +145,14 @@ type CatalogProvider interface {
 
 type ConfigurableProvider interface {
 	Configure(apiKey, baseURL string)
+}
+
+type AdvancedConfigurableProvider interface {
+	ConfigureAdvanced(apiKey, baseURL, metadataToken string)
+}
+
+type LongLivedProvider interface {
+	ProviderKind() ProviderKind
+	GetMessageURL(token string) string
+	CheckManualSMS(ctx context.Context, input ManualSMSInput) (*SMSResult, error)
 }

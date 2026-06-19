@@ -51,10 +51,13 @@ func (s *DashboardService) Stats() (*DashboardStats, error) {
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	stats := &DashboardStats{}
 
-	if err := s.db.Model(&model.ReceiveOrder{}).Where("status = ?", model.OrderSMSReceived).Count(&stats.TotalCompletedOrders).Error; err != nil {
+	completedStatuses := []string{model.OrderSMSReceived, model.OrderCompleted}
+	if err := s.db.Model(&model.ReceiveOrder{}).Where("status IN ?", completedStatuses).Count(&stats.TotalCompletedOrders).Error; err != nil {
 		return nil, err
 	}
-	if err := s.db.Model(&model.ReceiveOrder{}).Where("status = ? AND received_at >= ?", model.OrderSMSReceived, todayStart).Count(&stats.TodayCompletedOrders).Error; err != nil {
+	if err := s.db.Model(&model.ReceiveOrder{}).
+		Where("status IN ? AND COALESCE(received_at, started_at, created_at) >= ?", completedStatuses, todayStart).
+		Count(&stats.TodayCompletedOrders).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.Model(&model.ReceiveOrder{}).Where("status IN ?", []string{model.OrderCreated, model.OrderActive, model.OrderCancelRequested}).Count(&stats.ActiveOrders).Error; err != nil {
@@ -74,7 +77,7 @@ func (s *DashboardService) Stats() (*DashboardStats, error) {
 	}
 	if err := s.db.Model(&model.ReceiveOrder{}).
 		Select("provider_code AS key, provider_code AS name, count(*) AS count").
-		Where("status = ?", model.OrderSMSReceived).
+		Where("status IN ?", completedStatuses).
 		Group("provider_code").
 		Order("count desc").
 		Limit(6).
@@ -84,7 +87,7 @@ func (s *DashboardService) Stats() (*DashboardStats, error) {
 	if err := s.db.Table("sys_receive_orders").
 		Select("sys_service_configs.target_platform AS key, sys_service_configs.target_platform AS name, count(*) AS count").
 		Joins("JOIN sys_service_configs ON sys_service_configs.id = sys_receive_orders.service_config_id").
-		Where("sys_receive_orders.status = ?", model.OrderSMSReceived).
+		Where("sys_receive_orders.status IN ?", completedStatuses).
 		Group("sys_service_configs.target_platform").
 		Order("count desc").
 		Limit(8).

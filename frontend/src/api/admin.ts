@@ -28,7 +28,7 @@ export function listProviders() {
   return unwrap<SMSProvider[]>(api.get('/admin/providers'));
 }
 
-export function updateProvider(provider: string, payload: Partial<SMSProvider> & { apiKey?: string }) {
+export function updateProvider(provider: string, payload: Partial<SMSProvider> & { apiKey?: string; loginCredential?: string; metadataToken?: string }) {
   return unwrap<SMSProvider>(api.patch(`/admin/providers/${provider}`, payload));
 }
 

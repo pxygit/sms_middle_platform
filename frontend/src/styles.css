@@ -236,6 +236,40 @@ input {
   margin-top: 2px;
 }
 
+.manual-check-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: -6px 0 14px;
+}
+
+.manual-check-url {
+  min-width: 0;
+  padding: 13px 16px;
+  border-radius: 18px;
+  background: rgba(20, 184, 166, 0.1);
+}
+
+.manual-check-url span {
+  display: block;
+  color: #5f7889;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.manual-check-url strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+:root[data-theme="dark"] .manual-check-url {
+  background: rgba(103, 232, 249, 0.12);
+}
+
 .empty-state {
   display: grid;
   place-items: center;
@@ -792,6 +826,7 @@ input {
   .hero-grid,
   .status-section,
   .metric-grid,
+  .manual-check-row,
   .admin-stat-grid,
   .dashboard-grid,
   .balance-grid {

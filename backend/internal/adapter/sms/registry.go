@@ -27,6 +27,30 @@ func (r *Registry) Configure(name, apiKey, baseURL string) error {
 	if err != nil {
 		return err
 	}
+	if configurable, ok := provider.(AdvancedConfigurableProvider); ok {
+		configurable.ConfigureAdvanced(apiKey, baseURL, "")
+		return nil
+	}
+	configurable, ok := provider.(ConfigurableProvider)
+	if !ok {
+		return fmt.Errorf("sms provider %s does not support runtime configuration", name)
+	}
+	configurable.Configure(apiKey, baseURL)
+	return nil
+}
+
+func (r *Registry) ConfigureAdvanced(name, apiKey, baseURL, metadataToken string) error {
+	provider, err := r.Get(name)
+	if err != nil {
+		return err
+	}
+	if configurable, ok := provider.(AdvancedConfigurableProvider); ok {
+		configurable.ConfigureAdvanced(apiKey, baseURL, metadataToken)
+		return nil
+	}
+	if metadataToken != "" {
+		return fmt.Errorf("sms provider %s does not support metadata token configuration", name)
+	}
 	configurable, ok := provider.(ConfigurableProvider)
 	if !ok {
 		return fmt.Errorf("sms provider %s does not support runtime configuration", name)

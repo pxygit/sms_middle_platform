@@ -13,6 +13,10 @@ export function getOrder(orderNo: string, cardCode: string) {
   return unwrap<ReceiveOrder>(api.get(`/public/orders/${orderNo}`, { params: { cardCode } }));
 }
 
+export function checkOrder(orderNo: string, cardCode: string) {
+  return unwrap<ReceiveOrder>(api.post(`/public/orders/${orderNo}/check`, { cardCode }));
+}
+
 export function cancelOrder(orderNo: string, cardCode: string) {
   return unwrap<ReceiveOrder>(api.post(`/public/orders/${orderNo}/cancel`, { cardCode }));
 }

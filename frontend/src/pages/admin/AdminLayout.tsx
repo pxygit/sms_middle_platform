@@ -361,8 +361,24 @@ function ProvidersPage() {
 
   const openEdit = (record: SMSProvider) => {
     setEditing(record);
-    form.setFieldsValue({ ...record, apiKey: '' });
+    form.setFieldsValue({ ...record, apiKey: '', loginCredential: '' });
     setOpen(true);
+  };
+  const submitProvider = (values: any) => {
+    if (!editing) return;
+    const nextValues = { ...values };
+    const hasCredential = Boolean(String(values.loginCredential || '').trim()) || Boolean(editing.loginCredentialSet || editing.metadataTokenSet);
+    if (editing.requiresLoginCredential && !hasCredential) {
+      Modal.confirm({
+        title: t('loginCredentialRequiredTitle'),
+        content: t('loginCredentialRequiredConfirm'),
+        okText: t('save'),
+        cancelText: t('cancel'),
+        onOk: () => mutation.mutate({ code: editing.code, values: nextValues }),
+      });
+      return;
+    }
+    mutation.mutate({ code: editing.code, values: nextValues });
   };
 
   return (
@@ -449,7 +465,7 @@ function ProvidersPage() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={(values) => editing && mutation.mutate({ code: editing.code, values })}
+          onFinish={submitProvider}
         >
           <Form.Item name="name" label={t('providerName')} rules={[{ required: true }]}>
             <Input />
@@ -463,6 +479,14 @@ function ProvidersPage() {
           <Form.Item name="apiKey" label={t('apiKey')} tooltip={t('apiKeyHelp')}>
             <Input.Password placeholder={editing?.apiKeySet ? t('leaveBlankToKeep') : undefined} />
           </Form.Item>
+          {editing?.requiresLoginCredential && (
+            <Form.Item name="loginCredential" label={t('loginCredential')} tooltip={t('loginCredentialHelp')}>
+              <Input.TextArea
+                autoSize={{ minRows: 3, maxRows: 6 }}
+                placeholder={(editing.loginCredentialSet || editing.metadataTokenSet) ? t('leaveBlankToKeep') : t('loginCredentialPlaceholder')}
+              />
+            </Form.Item>
+          )}
           <Form.Item name="status" label={t('status')}>
             <Select options={['enabled', 'disabled'].map((item) => ({ label: t(item), value: item }))} />
           </Form.Item>
@@ -485,9 +509,12 @@ function ServicesPage() {
   const providerCode = Form.useWatch('providerCode', form) || 'smspool';
   const countryId = Form.useWatch('providerCountryId', form);
   const serviceId = Form.useWatch('providerServiceId', form);
+  const quoteUnsupported = providerCode === '68sms' && Boolean(countryId) && Boolean(serviceId);
   const query = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
   const currencyByProvider = providerCurrencyMap(providers.data || []);
+  const selectedProvider = (providers.data || []).find((item) => item.code === providerCode);
+  const isLongLivedProvider = Boolean(selectedProvider?.manualCheck || selectedProvider?.providerKind === 'long_lived' || providerCode === '68sms');
   const countries = useQuery({
     queryKey: ['provider-countries', providerCode],
     queryFn: () => listProviderCountries(providerCode),
@@ -501,10 +528,13 @@ function ServicesPage() {
   const quote = useQuery({
     queryKey: ['provider-quote', providerCode, countryId, serviceId],
     queryFn: () => getProviderQuote(providerCode, { countryId, serviceId }),
-    enabled: open && Boolean(providerCode) && Boolean(countryId) && Boolean(serviceId),
+    enabled: open && Boolean(providerCode) && Boolean(countryId) && Boolean(serviceId) && providerCode !== '68sms',
   });
   const mutation = useMutation({
-    mutationFn: (values: any) => editing ? updateServiceConfig(editing.id, values) : createServiceConfig(values),
+    mutationFn: (values: any) => {
+      const payload = { ...values, timeoutSeconds: isLongLivedProvider ? 0 : values.timeoutSeconds };
+      return editing ? updateServiceConfig(editing.id, payload) : createServiceConfig(payload);
+    },
     onSuccess: () => {
       form.resetFields();
       setEditing(null);
@@ -527,7 +557,9 @@ function ServicesPage() {
 
   const openEdit = (record: any) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    const provider = (providers.data || []).find((item) => item.code === record.providerCode);
+    const longLived = Boolean(provider?.manualCheck || provider?.providerKind === 'long_lived' || record.providerCode === '68sms');
+    form.setFieldsValue({ ...record, timeoutSeconds: longLived ? 0 : record.timeoutSeconds });
     setOpen(true);
   };
 
@@ -556,12 +588,22 @@ function ServicesPage() {
   };
 
   useEffect(() => {
+    if (providerCode === '68sms') return;
     const quotePrice = quote.data?.price;
     const lowPrice = quotePrice?.lowPrice || quotePrice?.price;
     if (open && lowPrice && !editing) {
       form.setFieldValue('maxPrice', Number(lowPrice));
     }
-  }, [editing, form, open, quote.data]);
+  }, [editing, form, open, providerCode, quote.data]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (isLongLivedProvider) {
+      form.setFieldValue('timeoutSeconds', 0);
+    } else if (form.getFieldValue('timeoutSeconds') == null || form.getFieldValue('timeoutSeconds') === 0) {
+      form.setFieldValue('timeoutSeconds', 1200);
+    }
+  }, [form, isLongLivedProvider, open]);
 
   return (
     <div className="admin-page">
@@ -622,6 +664,7 @@ function ServicesPage() {
                   displayName: '',
                   targetPlatform: undefined,
                   maxPrice: undefined,
+                  timeoutSeconds: value === '68sms' ? 0 : 1200,
                 });
               }}
             />
@@ -660,6 +703,7 @@ function ServicesPage() {
           </Form.Item>
           <Form.Item name="displayName" hidden><Input /></Form.Item>
           <QuoteSummary
+            unsupported={quoteUnsupported}
             loading={quote.isFetching}
             error={quote.error as Error | null}
             price={quote.data?.price}
@@ -669,8 +713,8 @@ function ServicesPage() {
           <Form.Item name="maxPrice" label={t('maxPrice')} tooltip={t('maxPriceHelp')} rules={[{ required: true }]}>
             <InputNumber min={0} precision={4} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="timeoutSeconds" label={t('timeoutSeconds')} tooltip={t('timeoutHelp')}>
-            <InputNumber min={60} style={{ width: '100%' }} />
+          <Form.Item name="timeoutSeconds" label={t('timeoutSeconds')} tooltip={isLongLivedProvider ? t('timeoutLongLivedHelp') : t('timeoutHelp')}>
+            <InputNumber min={isLongLivedProvider ? 0 : 60} disabled={isLongLivedProvider} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="status" label={t('status')}>
             <Select options={['enabled', 'disabled'].map((item) => ({ label: t(item), value: item }))} />
@@ -1003,12 +1047,14 @@ function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }
 }
 
 function QuoteSummary({
+  unsupported,
   loading,
   error,
   price,
   stock,
   currency,
 }: {
+  unsupported?: boolean;
   loading: boolean;
   error: Error | null;
   price?: ProviderPrice;
@@ -1019,6 +1065,9 @@ function QuoteSummary({
   const hasPrice = Boolean(price?.lowPrice || price?.price || price?.highPrice);
   const hasStock = stock?.amount !== undefined;
   const hasSuccessRate = Boolean(price && price.successRate > 0);
+  if (unsupported) {
+    return <Alert className="form-help" type="info" showIcon message={t('providerQuoteUnsupported')} />;
+  }
   if (loading) {
     return (
       <Space className="quote-row" wrap>

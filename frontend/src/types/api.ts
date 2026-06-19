@@ -27,6 +27,11 @@ export interface SMSProvider {
   currencyCode: string;
   status: string;
   apiKeySet: boolean;
+  metadataTokenSet?: boolean;
+  loginCredentialSet?: boolean;
+  requiresLoginCredential?: boolean;
+  providerKind?: string;
+  manualCheck?: boolean;
   lastBalance?: string;
   lastBalanceCheckedAt?: string;
   createdAt: string;
@@ -54,6 +59,9 @@ export interface ReceiveOrder {
   maxPrice: number;
   status: string;
   supplierStatus?: string;
+  providerKind?: string;
+  manualCheck?: boolean;
+  messageUrl?: string;
   failureReason?: string;
   startedAt?: string;
   receivedAt?: string;

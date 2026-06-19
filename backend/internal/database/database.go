@@ -86,6 +86,18 @@ func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 	}); err != nil {
 		return err
 	}
+	if err := seedProvider(db, cfg.DataEncryptionKey, providerSeed{
+		Code:            "68sms",
+		Name:            "68SMS",
+		BaseURL:         cfg.SMS68BaseURL,
+		CurrencyCode:    "USD",
+		APIKey:          cfg.SMS68APIKey,
+		MetadataToken:   cfg.SMS68MetadataToken,
+		LongLived:       true,
+		LoginCredential: true,
+	}); err != nil {
+		return err
+	}
 
 	if err := db.Model(&model.Admin{}).Where("username = ?", cfg.AdminDefaultUsername).Count(&count).Error; err != nil {
 		return err
@@ -106,11 +118,14 @@ func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 }
 
 type providerSeed struct {
-	Code         string
-	Name         string
-	BaseURL      string
-	CurrencyCode string
-	APIKey       string
+	Code            string
+	Name            string
+	BaseURL         string
+	CurrencyCode    string
+	APIKey          string
+	MetadataToken   string
+	LongLived       bool
+	LoginCredential bool
 }
 
 func seedProvider(db *gorm.DB, encryptionKey string, seed providerSeed) error {
@@ -120,11 +135,13 @@ func seedProvider(db *gorm.DB, encryptionKey string, seed providerSeed) error {
 	}
 	if count == 0 {
 		capabilities, _ := json.Marshal(map[string]bool{
-			"balance": true,
-			"pricing": true,
-			"stock":   true,
-			"cancel":  true,
-			"polling": true,
+			"balance":          true,
+			"pricing":          true,
+			"stock":            true,
+			"cancel":           !seed.LongLived,
+			"polling":          !seed.LongLived,
+			"manual_check":     seed.LongLived,
+			"login_credential": seed.LoginCredential,
 		})
 		if err := db.Create(&model.SMSProvider{
 			Code:         seed.Code,
@@ -137,22 +154,49 @@ func seedProvider(db *gorm.DB, encryptionKey string, seed providerSeed) error {
 			return err
 		}
 	}
-	if seed.APIKey == "" {
+	if seed.APIKey == "" && seed.MetadataToken == "" && !seed.LoginCredential {
 		return nil
 	}
 	var provider model.SMSProvider
 	if err := db.Where("code = ?", seed.Code).First(&provider).Error; err != nil {
 		return err
 	}
-	if provider.APIKeyCipher != "" {
+	updates := map[string]interface{}{
+		"base_url": seed.BaseURL,
+	}
+	if seed.LoginCredential {
+		capabilities := map[string]bool{}
+		if len(provider.Capabilities) > 0 {
+			_ = json.Unmarshal(provider.Capabilities, &capabilities)
+		}
+		if !capabilities["login_credential"] {
+			capabilities["balance"] = true
+			capabilities["pricing"] = true
+			capabilities["stock"] = true
+			capabilities["cancel"] = !seed.LongLived
+			capabilities["polling"] = !seed.LongLived
+			capabilities["manual_check"] = seed.LongLived
+			capabilities["login_credential"] = true
+			raw, _ := json.Marshal(capabilities)
+			updates["capabilities"] = raw
+		}
+	}
+	if seed.APIKey != "" && provider.APIKeyCipher == "" {
+		cipherText, err := util.EncryptString(encryptionKey, seed.APIKey)
+		if err != nil {
+			return err
+		}
+		updates["api_key_cipher"] = cipherText
+	}
+	if seed.MetadataToken != "" && provider.MetadataTokenCipher == "" {
+		cipherText, err := util.EncryptString(encryptionKey, seed.MetadataToken)
+		if err != nil {
+			return err
+		}
+		updates["metadata_token_cipher"] = cipherText
+	}
+	if len(updates) == 1 {
 		return nil
 	}
-	cipherText, err := util.EncryptString(encryptionKey, seed.APIKey)
-	if err != nil {
-		return err
-	}
-	return db.Model(&provider).Updates(map[string]interface{}{
-		"api_key_cipher": cipherText,
-		"base_url":       seed.BaseURL,
-	}).Error
+	return db.Model(&provider).Updates(updates).Error
 }

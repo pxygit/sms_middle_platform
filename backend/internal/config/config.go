@@ -32,6 +32,10 @@ type Config struct {
 	LubanSMSAPIKey       string
 	LubanSMSBaseURL      string
 	LubanSMSTimeout      time.Duration
+	SMS68APIKey          string
+	SMS68BaseURL         string
+	SMS68Timeout         time.Duration
+	SMS68MetadataToken   string
 	OrderPollInterval    time.Duration
 	OrderTimeout         time.Duration
 	CardExportDir        string
@@ -64,6 +68,10 @@ func Load() Config {
 		LubanSMSAPIKey:       getEnv("LUBANSMS_API_KEY", ""),
 		LubanSMSBaseURL:      getEnv("LUBANSMS_BASE_URL", "https://lubansms.com"),
 		LubanSMSTimeout:      time.Duration(getEnvInt("LUBANSMS_TIMEOUT_SECONDS", 15)) * time.Second,
+		SMS68APIKey:          getEnv("SMS68_API_KEY", ""),
+		SMS68BaseURL:         getEnv("SMS68_BASE_URL", "https://api.68sms.com"),
+		SMS68Timeout:         time.Duration(getEnvInt("SMS68_TIMEOUT_SECONDS", 15)) * time.Second,
+		SMS68MetadataToken:   getEnv("SMS68_METADATA_TOKEN", ""),
 		OrderPollInterval:    time.Duration(getEnvInt("ORDER_POLL_INTERVAL_SECONDS", 8)) * time.Second,
 		OrderTimeout:         time.Duration(getEnvInt("ORDER_TIMEOUT_SECONDS", 1200)) * time.Second,
 		CardExportDir:        getEnv("CARD_EXPORT_DIR", "storage/card_exports"),

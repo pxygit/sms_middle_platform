@@ -51,6 +51,7 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		publicAPI.POST("/cards/verify", cardHandler.Verify)
 		publicAPI.POST("/orders", orderHandler.Create)
 		publicAPI.GET("/orders/:orderNo", orderHandler.Get)
+		publicAPI.POST("/orders/:orderNo/check", orderHandler.Check)
 		publicAPI.POST("/orders/:orderNo/cancel", orderHandler.Cancel)
 		publicAPI.GET("/cards/history", orderHandler.History)
 		publicAPI.POST("/visits", visitHandler.Record)

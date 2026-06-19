@@ -13,6 +13,7 @@ const (
 
 	OrderCreated         = "created"
 	OrderActive          = "active"
+	OrderCompleted       = "completed"
 	OrderSMSReceived     = "sms_received"
 	OrderCancelRequested = "cancel_requested"
 	OrderCancelled       = "cancelled"
@@ -34,19 +35,25 @@ type Admin struct {
 func (Admin) TableName() string { return "sys_admins" }
 
 type SMSProvider struct {
-	ID                   uint           `gorm:"primaryKey" json:"id"`
-	Code                 string         `gorm:"size:64;uniqueIndex;not null" json:"code"`
-	Name                 string         `gorm:"size:128;not null" json:"name"`
-	BaseURL              string         `gorm:"size:255" json:"baseUrl"`
-	CurrencyCode         string         `gorm:"size:8;not null;default:USD" json:"currencyCode"`
-	APIKeyCipher         string         `gorm:"type:text" json:"-"`
-	Status               string         `gorm:"size:32;not null;default:enabled" json:"status"`
-	Capabilities         datatypes.JSON `gorm:"type:jsonb" json:"capabilities"`
-	LastBalance          string         `gorm:"size:64" json:"lastBalance"`
-	LastBalanceCheckedAt *time.Time     `json:"lastBalanceCheckedAt"`
-	CreatedAt            time.Time      `json:"createdAt"`
-	UpdatedAt            time.Time      `json:"updatedAt"`
-	APIKeySet            bool           `gorm:"-" json:"apiKeySet"`
+	ID                      uint           `gorm:"primaryKey" json:"id"`
+	Code                    string         `gorm:"size:64;uniqueIndex;not null" json:"code"`
+	Name                    string         `gorm:"size:128;not null" json:"name"`
+	BaseURL                 string         `gorm:"size:255" json:"baseUrl"`
+	CurrencyCode            string         `gorm:"size:8;not null;default:USD" json:"currencyCode"`
+	APIKeyCipher            string         `gorm:"type:text" json:"-"`
+	MetadataTokenCipher     string         `gorm:"type:text" json:"-"`
+	Status                  string         `gorm:"size:32;not null;default:enabled" json:"status"`
+	Capabilities            datatypes.JSON `gorm:"type:jsonb" json:"capabilities"`
+	LastBalance             string         `gorm:"size:64" json:"lastBalance"`
+	LastBalanceCheckedAt    *time.Time     `json:"lastBalanceCheckedAt"`
+	CreatedAt               time.Time      `json:"createdAt"`
+	UpdatedAt               time.Time      `json:"updatedAt"`
+	APIKeySet               bool           `gorm:"-" json:"apiKeySet"`
+	MetadataTokenSet        bool           `gorm:"-" json:"metadataTokenSet"`
+	LoginCredentialSet      bool           `gorm:"-" json:"loginCredentialSet"`
+	RequiresLoginCredential bool           `gorm:"-" json:"requiresLoginCredential"`
+	ProviderKind            string         `gorm:"-" json:"providerKind,omitempty"`
+	ManualCheck             bool           `gorm:"-" json:"manualCheck,omitempty"`
 }
 
 func (SMSProvider) TableName() string { return "sys_sms_providers" }
@@ -158,6 +165,9 @@ type ReceiveOrder struct {
 	MaxPrice            float64        `gorm:"type:numeric(12,4);not null;default:0" json:"maxPrice"`
 	Status              string         `gorm:"size:32;index;not null;default:created" json:"status"`
 	SupplierStatus      string         `gorm:"size:64" json:"supplierStatus"`
+	ProviderKind        string         `gorm:"-" json:"providerKind,omitempty"`
+	ManualCheck         bool           `gorm:"-" json:"manualCheck,omitempty"`
+	MessageURL          string         `gorm:"-" json:"messageUrl,omitempty"`
 	RawResponse         datatypes.JSON `gorm:"type:jsonb" json:"rawResponse"`
 	FailureReason       string         `gorm:"type:text" json:"failureReason"`
 	StartedAt           *time.Time     `json:"startedAt"`

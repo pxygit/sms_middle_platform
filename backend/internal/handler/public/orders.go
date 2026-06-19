@@ -48,6 +48,20 @@ func (h *OrderHandler) Get(c *gin.Context) {
 	response.OK(c, order)
 }
 
+func (h *OrderHandler) Check(c *gin.Context) {
+	var req cardCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "cardCode is required")
+		return
+	}
+	order, err := h.orders.CheckByCard(c.Request.Context(), c.Param("orderNo"), req.CardCode)
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, order)
+}
+
 func (h *OrderHandler) Cancel(c *gin.Context) {
 	var req cardCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

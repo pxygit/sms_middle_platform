@@ -69,6 +69,7 @@ func (s *OrderService) Create(ctx context.Context, cardCode string) (*model.Rece
 		s.markFailed(order.ID, err.Error())
 		return nil, err
 	}
+	longLived := s.isManualCheckProvider(card.ProviderCode)
 	result, err := provider.RequestNumber(ctx, sms.RequestNumberInput{
 		CountryID: card.ServiceConfig.ProviderCountryID,
 		ServiceID: card.ServiceConfig.ProviderServiceID,
@@ -81,6 +82,10 @@ func (s *OrderService) Create(ctx context.Context, cardCode string) (*model.Rece
 	}
 
 	now := time.Now()
+	orderStatus := model.OrderActive
+	if longLived {
+		orderStatus = model.OrderCompleted
+	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&card, card.ID).Error; err != nil {
 			return err
@@ -98,7 +103,7 @@ func (s *OrderService) Create(ctx context.Context, cardCode string) (*model.Rece
 			"phone_country_code":    result.PhoneCountryCode,
 			"phone_national_number": result.PhoneNationalNumber,
 			"cost":                  result.Cost,
-			"status":                model.OrderActive,
+			"status":                orderStatus,
 			"supplier_status":       "active",
 			"raw_response":          []byte(result.Raw),
 			"started_at":            now,
@@ -120,7 +125,7 @@ func (s *OrderService) GetByCard(ctx context.Context, orderNo, cardCode string) 
 	if err != nil {
 		return nil, errors.New("order not found")
 	}
-	normalizeDisplayCost(&order)
+	s.decorateOrder(&order)
 	return &order, nil
 }
 
@@ -138,7 +143,7 @@ func (s *OrderService) History(cardCode string, limit, offset int) ([]model.Rece
 		Offset(offset).
 		Find(&orders).Error
 	for index := range orders {
-		normalizeDisplayCost(&orders[index])
+		s.decorateOrder(&orders[index])
 	}
 	return orders, err
 }
@@ -164,6 +169,9 @@ func (s *OrderService) Cancel(ctx context.Context, orderID uint) (*model.Receive
 	}
 	if order.Status != model.OrderActive {
 		return nil, errors.New("order cannot be cancelled in current status")
+	}
+	if s.isManualCheckProvider(order.ProviderCode) {
+		return nil, errors.New("manual check orders cannot be cancelled")
 	}
 	if order.StartedAt == nil || time.Since(*order.StartedAt) < 2*time.Minute {
 		return nil, errors.New("cancel is allowed after two minutes if no sms has been received")
@@ -209,7 +217,7 @@ func (s *OrderService) List(limit, offset int) ([]model.ReceiveOrder, error) {
 	var orders []model.ReceiveOrder
 	err := s.db.Preload("ServiceConfig").Order("id desc").Limit(limit).Offset(offset).Find(&orders).Error
 	for index := range orders {
-		normalizeDisplayCost(&orders[index])
+		s.decorateOrder(&orders[index])
 	}
 	return orders, err
 }
@@ -223,6 +231,9 @@ func (s *OrderService) PollActive(ctx context.Context, staleBefore time.Time) er
 		return err
 	}
 	for _, order := range orders {
+		if s.isManualCheckProvider(order.ProviderCode) {
+			continue
+		}
 		if err := s.pollOne(ctx, order); err != nil {
 			fmt.Printf("poll order %s failed: %v\n", order.OrderNo, err)
 		}
@@ -234,6 +245,9 @@ func (s *OrderService) pollOne(ctx context.Context, order model.ReceiveOrder) er
 	now := time.Now()
 	timeout := time.Duration(order.ServiceConfig.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
+		if s.isManualCheckProvider(order.ProviderCode) {
+			return nil
+		}
 		timeout = 20 * time.Minute
 	}
 	if order.StartedAt != nil && now.After(order.StartedAt.Add(timeout)) {
@@ -287,8 +301,62 @@ func (s *OrderService) getByID(id uint) (*model.ReceiveOrder, error) {
 	if err := s.db.Preload("ServiceConfig").First(&order, id).Error; err != nil {
 		return nil, err
 	}
-	normalizeDisplayCost(&order)
+	s.decorateOrder(&order)
 	return &order, nil
+}
+
+func (s *OrderService) CheckByCard(ctx context.Context, orderNo, cardCode string) (*model.ReceiveOrder, error) {
+	order, err := s.GetByCard(ctx, orderNo, cardCode)
+	if err != nil {
+		return nil, err
+	}
+	if order.Status == model.OrderSMSReceived || order.Status == model.OrderCancelled || order.Status == model.OrderExpired || order.Status == model.OrderFailed {
+		return order, nil
+	}
+	provider, err := s.registry.Get(order.ProviderCode)
+	if err != nil {
+		return nil, err
+	}
+	longLived, ok := provider.(sms.LongLivedProvider)
+	if !ok {
+		return order, nil
+	}
+	result, err := longLived.CheckManualSMS(ctx, sms.ManualSMSInput{
+		SupplierOrderID: order.SupplierOrderID,
+		SupplierToken:   order.SupplierToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	updates := map[string]interface{}{
+		"last_polled_at":  now,
+		"supplier_status": resultStatus(result),
+	}
+	if result != nil {
+		updates["raw_response"] = []byte(result.Raw)
+	}
+	switch result.Status {
+	case model.OrderSMSReceived:
+		updates["status"] = model.OrderSMSReceived
+		updates["verification_code"] = result.VerificationCode
+		updates["sms_content"] = result.SMSContent
+		updates["received_at"] = now
+	case model.OrderActive:
+		if result.SupplierStatus != "" {
+			updates["failure_reason"] = ""
+		}
+	case model.OrderCancelled:
+		updates["status"] = model.OrderCancelled
+		updates["cancelled_at"] = now
+	case model.OrderExpired:
+		updates["status"] = model.OrderExpired
+		updates["expired_at"] = now
+	}
+	if err := s.db.Model(&order).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	return s.getByID(order.ID)
 }
 
 func (s *OrderService) firefoxReceivedCost(ctx context.Context, order model.ReceiveOrder) float64 {
@@ -327,6 +395,31 @@ func normalizeDisplayCost(order *model.ReceiveOrder) {
 	if order.Cost <= 0 && order.MaxPrice > 0 {
 		order.Cost = order.MaxPrice
 	}
+}
+
+func (s *OrderService) decorateOrder(order *model.ReceiveOrder) {
+	if order == nil {
+		return
+	}
+	if s.isManualCheckProvider(order.ProviderCode) {
+		order.ManualCheck = true
+		order.ProviderKind = "long_lived"
+		if provider, err := s.registry.Get(order.ProviderCode); err == nil {
+			if longLived, ok := provider.(sms.LongLivedProvider); ok {
+				order.MessageURL = longLived.GetMessageURL(order.SupplierToken)
+			}
+		}
+	}
+	normalizeDisplayCost(order)
+}
+
+func (s *OrderService) isManualCheckProvider(providerCode string) bool {
+	provider, err := s.registry.Get(providerCode)
+	if err != nil {
+		return false
+	}
+	_, ok := provider.(sms.LongLivedProvider)
+	return ok
 }
 
 func parseCost(value string) float64 {

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -18,11 +19,13 @@ type CatalogService struct {
 }
 
 type ProviderInput struct {
-	Name         string `json:"name" binding:"required"`
-	BaseURL      string `json:"baseUrl"`
-	CurrencyCode string `json:"currencyCode"`
-	APIKey       string `json:"apiKey"`
-	Status       string `json:"status"`
+	Name            string `json:"name" binding:"required"`
+	BaseURL         string `json:"baseUrl"`
+	CurrencyCode    string `json:"currencyCode"`
+	APIKey          string `json:"apiKey"`
+	LoginCredential string `json:"loginCredential"`
+	MetadataToken   string `json:"metadataToken"`
+	Status          string `json:"status"`
 }
 
 type ServiceConfigInput struct {
@@ -47,7 +50,7 @@ func (s *CatalogService) Providers() ([]model.SMSProvider, error) {
 	var providers []model.SMSProvider
 	err := s.db.Order("id asc").Find(&providers).Error
 	for index := range providers {
-		providers[index].APIKeySet = providers[index].APIKeyCipher != ""
+		s.decorateProvider(&providers[index])
 	}
 	return providers, err
 }
@@ -78,6 +81,14 @@ func (s *CatalogService) UpdateProvider(code string, input ProviderInput) (*mode
 		}
 		updates["api_key_cipher"] = cipherText
 	}
+	credential := providerLoginCredential(input)
+	if credential != "" {
+		cipherText, err := util.EncryptString(s.encryptionKey, credential)
+		if err != nil {
+			return nil, err
+		}
+		updates["metadata_token_cipher"] = cipherText
+	}
 	if err := s.db.Model(&provider).Updates(updates).Error; err != nil {
 		return nil, err
 	}
@@ -87,7 +98,7 @@ func (s *CatalogService) UpdateProvider(code string, input ProviderInput) (*mode
 	if err := s.configureRuntime(provider); err != nil {
 		return nil, err
 	}
-	provider.APIKeySet = provider.APIKeyCipher != ""
+	s.decorateProvider(&provider)
 	return &provider, nil
 }
 
@@ -106,6 +117,7 @@ func (s *CatalogService) ConfigureRuntimeProviders() error {
 
 func (s *CatalogService) configureRuntime(provider model.SMSProvider) error {
 	apiKey := ""
+	metadataToken := ""
 	if provider.APIKeyCipher != "" {
 		plain, err := util.DecryptString(s.encryptionKey, provider.APIKeyCipher)
 		if err != nil {
@@ -113,10 +125,52 @@ func (s *CatalogService) configureRuntime(provider model.SMSProvider) error {
 		}
 		apiKey = plain
 	}
+	if provider.MetadataTokenCipher != "" {
+		plain, err := util.DecryptString(s.encryptionKey, provider.MetadataTokenCipher)
+		if err != nil {
+			return err
+		}
+		metadataToken = normalizeLoginCredential(plain)
+	}
 	if s.registry == nil {
 		return nil
 	}
-	return s.registry.Configure(provider.Code, apiKey, provider.BaseURL)
+	return s.registry.ConfigureAdvanced(provider.Code, apiKey, provider.BaseURL, metadataToken)
+}
+
+func (s *CatalogService) decorateProvider(provider *model.SMSProvider) {
+	provider.APIKeySet = provider.APIKeyCipher != ""
+	provider.MetadataTokenSet = provider.MetadataTokenCipher != ""
+	provider.LoginCredentialSet = provider.MetadataTokenSet
+	provider.RequiresLoginCredential = provider.Code == "68sms" || providerCapability(provider.Capabilities, "login_credential")
+	if s.registry != nil {
+		if smsProvider, err := s.registry.Get(provider.Code); err == nil {
+			if longLived, ok := smsProvider.(sms.LongLivedProvider); ok {
+				kind := longLived.ProviderKind()
+				provider.ProviderKind = kind.Kind
+				provider.ManualCheck = kind.ManualCheck
+			}
+		}
+	}
+}
+
+func providerCapability(raw []byte, key string) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	values := map[string]bool{}
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return false
+	}
+	return values[key]
+}
+
+func normalizeLoginCredential(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func providerLoginCredential(input ProviderInput) string {
+	return normalizeLoginCredential(firstNonEmpty(input.LoginCredential, input.MetadataToken))
 }
 
 func (s *CatalogService) ListServiceConfigs() ([]model.ServiceConfig, error) {
@@ -126,7 +180,11 @@ func (s *CatalogService) ListServiceConfigs() ([]model.ServiceConfig, error) {
 }
 
 func (s *CatalogService) CreateServiceConfig(input ServiceConfigInput) (*model.ServiceConfig, error) {
-	if input.TimeoutSeconds <= 0 {
+	if input.TimeoutSeconds < 0 {
+		input.TimeoutSeconds = 0
+	}
+	longLived := s.isLongLivedProvider(input.ProviderCode)
+	if input.TimeoutSeconds == 0 && !longLived {
 		input.TimeoutSeconds = 1200
 	}
 	if input.Status == "" {
@@ -145,7 +203,16 @@ func (s *CatalogService) CreateServiceConfig(input ServiceConfigInput) (*model.S
 		TimeoutSeconds:    input.TimeoutSeconds,
 		Status:            input.Status,
 	}
-	return &config, s.db.Create(&config).Error
+	if err := s.db.Create(&config).Error; err != nil {
+		return nil, err
+	}
+	if longLived && input.TimeoutSeconds == 0 {
+		if err := s.db.Model(&config).Update("timeout_seconds", 0).Error; err != nil {
+			return nil, err
+		}
+		config.TimeoutSeconds = 0
+	}
+	return &config, nil
 }
 
 func (s *CatalogService) UpdateServiceConfig(id uint, input ServiceConfigInput) (*model.ServiceConfig, error) {
@@ -166,7 +233,10 @@ func (s *CatalogService) UpdateServiceConfig(id uint, input ServiceConfigInput) 
 		"timeout_seconds":     input.TimeoutSeconds,
 		"status":              input.Status,
 	}
-	if updates["timeout_seconds"].(int) <= 0 {
+	if updates["timeout_seconds"].(int) < 0 {
+		updates["timeout_seconds"] = 0
+	}
+	if updates["timeout_seconds"].(int) == 0 && !s.isLongLivedProvider(input.ProviderCode) {
 		updates["timeout_seconds"] = 1200
 	}
 	if updates["status"].(string) == "" {
@@ -176,6 +246,18 @@ func (s *CatalogService) UpdateServiceConfig(id uint, input ServiceConfigInput) 
 		return nil, err
 	}
 	return &config, s.db.First(&config, id).Error
+}
+
+func (s *CatalogService) isLongLivedProvider(providerCode string) bool {
+	if s.registry == nil {
+		return providerCode == "68sms"
+	}
+	provider, err := s.registry.Get(providerCode)
+	if err != nil {
+		return providerCode == "68sms"
+	}
+	_, ok := provider.(sms.LongLivedProvider)
+	return ok
 }
 
 func (s *CatalogService) DeleteServiceConfig(id uint) error {

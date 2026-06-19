@@ -42,11 +42,12 @@ func (h *CatalogHandler) UpdateProvider(c *gin.Context) {
 		return
 	}
 	h.audit.Record("admin", adminID(c), "provider.update", "provider", c.Param("provider"), c.ClientIP(), c.Request.UserAgent(), gin.H{
-		"name":         req.Name,
-		"baseUrl":      req.BaseURL,
-		"currencyCode": req.CurrencyCode,
-		"status":       req.Status,
-		"apiKeySet":    req.APIKey != "",
+		"name":               req.Name,
+		"baseUrl":            req.BaseURL,
+		"currencyCode":       req.CurrencyCode,
+		"status":             req.Status,
+		"apiKeySet":          req.APIKey != "",
+		"loginCredentialSet": req.LoginCredential != "" || req.MetadataToken != "",
 	})
 	response.OK(c, provider)
 }

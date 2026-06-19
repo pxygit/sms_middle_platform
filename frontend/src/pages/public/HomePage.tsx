@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Alert, Button, Input, Space, Spin, Tag, message } from 'antd';
 import { Copy, History, KeyRound, Phone, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { cancelOrder, createOrder, getHistory, getOrder, recordVisit, verifyCard } from '../../api/public';
+import { cancelOrder, checkOrder, createOrder, getHistory, getOrder, recordVisit, verifyCard } from '../../api/public';
 import type { CardVerifyResult, ReceiveOrder } from '../../types/api';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { localizedError } from '../../utils/errors';
@@ -22,6 +22,7 @@ function statusText(status?: string, t?: (key: string) => string) {
   const map: Record<string, string> = {
     created: t?.('created') || 'Waiting',
     active: t?.('waiting') || 'Waiting for SMS',
+    completed: t?.('completed') || 'Completed',
     cancel_requested: t?.('cancel_requested') || 'Cancelling',
     sms_received: t?.('received') || 'Received',
     cancelled: t?.('cancelled') || 'Cancelled',
@@ -44,7 +45,7 @@ export function HomePage() {
         return parsed.filter((item) => item?.cardCode && item?.order && !finalStatuses.includes(item.order.status));
       }
       if (parsed?.order && parsed?.cardCode) {
-        return finalStatuses.includes(parsed.order.status) ? [] : [parsed];
+      return finalStatuses.includes(parsed.order.status) ? [] : [parsed];
       }
       return finalStatuses.includes(parsed.status) ? [] : [{ cardCode: localStorage.getItem('lastCardCode') || '', order: parsed }];
     } catch {
@@ -278,13 +279,26 @@ function OrderCard({
   const { order, cardCode } = item;
   const phone = formatPhone(order || {});
   const cancelRemaining = cancelRemainingSeconds(order, now);
-  const canCancel = Boolean(order.status === 'active' && !order.verificationCode && cancelRemaining <= 0);
-  const canPoll = Boolean(order.orderNo && cardCode && !finalStatuses.includes(order.status));
+  const isManual = Boolean(order.manualCheck);
+  const canCancel = Boolean(order.status === 'active' && !order.verificationCode && cancelRemaining <= 0 && !isManual);
+  const canPoll = Boolean(order.orderNo && cardCode && !finalStatuses.includes(order.status) && !isManual && order.status !== 'completed');
   const orderQuery = useQuery({
     queryKey: ['order', order.orderNo, cardCode],
     queryFn: () => getOrder(order.orderNo, cardCode),
     enabled: canPoll,
     refetchInterval: canPoll ? 5000 : false,
+  });
+  const checkMutation = useMutation({
+    mutationFn: () => checkOrder(order.orderNo, cardCode),
+    onSuccess: (data) => {
+      onUpdate(data);
+      if (data.verificationCode) {
+        message.success(t('received'));
+      } else {
+        message.info(t('noSMSYet'));
+      }
+    },
+    onError: (error: Error) => message.error(localizedError(error.message, t)),
   });
 
   useEffect(() => {
@@ -299,7 +313,7 @@ function OrderCard({
             <small>{order.orderNo}</small>
             <h2>{statusText(order.status, t)}</h2>
           </div>
-          {!finalStatuses.includes(order.status) && <Spin />}
+          {!isManual && order.status !== 'completed' && !finalStatuses.includes(order.status) && <Spin />}
         </div>
         <div className="metric-grid">
           <button className="metric" onClick={() => onCopy(phone.segment, 'copiedPhoneSegment')}>
@@ -313,9 +327,25 @@ function OrderCard({
             <Copy size={16} />
           </button>
         </div>
+        {isManual && (
+          <div className="manual-check-row">
+            <div className="manual-check-url">
+              <span>{t('messageUrl')}</span>
+              <strong>{order.messageUrl || '-'}</strong>
+            </div>
+            <Button
+              shape="round"
+              type="primary"
+              loading={checkMutation.isPending}
+              onClick={() => checkMutation.mutate()}
+            >
+              {t('checkSMS')}
+            </Button>
+          </div>
+        )}
         {order.smsContent && <Alert type="success" showIcon message={order.smsContent} />}
         {order.failureReason && <Alert type="error" showIcon message={localizedError(order.failureReason, t)} />}
-        {!finalStatuses.includes(order.status) && !order.verificationCode && (
+        {!isManual && order.status !== 'completed' && !finalStatuses.includes(order.status) && !order.verificationCode && (
           <Space className="cancel-row" wrap>
             <Button
               danger
