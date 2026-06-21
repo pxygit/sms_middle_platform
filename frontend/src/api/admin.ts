@@ -11,6 +11,7 @@ import type {
   ProviderQuote,
   ProviderService,
   ProviderStock,
+  ProviderValidityOption,
   ReceiveOrder,
   SMSProvider,
   ServiceConfig,
@@ -28,7 +29,7 @@ export function listProviders() {
   return unwrap<SMSProvider[]>(api.get('/admin/providers'));
 }
 
-export function updateProvider(provider: string, payload: Partial<SMSProvider> & { apiKey?: string; loginCredential?: string; metadataToken?: string }) {
+export function updateProvider(provider: string, payload: Partial<SMSProvider> & { apiKey?: string; loginCredential?: string; metadataToken?: string; authMode?: string; account?: string; password?: string }) {
   return unwrap<SMSProvider>(api.patch(`/admin/providers/${provider}`, payload));
 }
 
@@ -50,6 +51,10 @@ export function getProviderStock(provider: string, params: { countryId?: string;
 
 export function getProviderQuote(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
   return unwrap<ProviderQuote>(api.get(`/admin/providers/${provider}/quote`, { params }));
+}
+
+export function getProviderValidityOptions(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
+  return unwrap<ProviderValidityOption[]>(api.get(`/admin/providers/${provider}/validity-options`, { params }));
 }
 
 export function getProviderBalance(provider: string) {

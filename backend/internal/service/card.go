@@ -144,7 +144,7 @@ func (s *CardService) DeleteCard(id uint) error {
 		return err
 	}
 	if activeCount > 0 {
-		return errors.New("card has unfinished orders")
+		return errors.New("CARD_HAS_ACTIVE_ORDER: this card has an active order and cannot be deleted")
 	}
 	return s.db.Delete(&model.CardCode{}, id).Error
 }
@@ -192,7 +192,7 @@ func (s *CardService) DeleteBatch(id uint) error {
 			return err
 		}
 		if activeCount > 0 {
-			return errors.New("batch has unfinished orders")
+			return errors.New("CARD_BATCH_HAS_ACTIVE_ORDER: this batch has active orders and cannot be deleted")
 		}
 		if err := tx.Where("batch_id = ?", id).Delete(&model.CardCode{}).Error; err != nil {
 			return err

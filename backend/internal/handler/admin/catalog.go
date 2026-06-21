@@ -176,6 +176,18 @@ func (h *CatalogHandler) ProviderStock(c *gin.Context) {
 	response.OK(c, stock)
 }
 
+func (h *CatalogHandler) ProviderValidityOptions(c *gin.Context) {
+	options, err := h.meta.ValidityOptions(c.Request.Context(), c.Param("provider"), sms.ValidityOptionsInput{
+		CountryID: c.Query("countryId"),
+		ServiceID: c.Query("serviceId"),
+		PoolID:    c.Query("poolId"),
+	})
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, options)
+}
 func (h *CatalogHandler) ProviderQuote(c *gin.Context) {
 	quote, err := h.meta.Quote(c.Request.Context(), c.Param("provider"), sms.ProviderPriceInput{
 		CountryID: c.Query("countryId"),

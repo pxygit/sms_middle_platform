@@ -16,6 +16,7 @@ export interface ServiceConfig {
   providerPoolId?: string;
   maxPrice: number;
   timeoutSeconds: number;
+  metadata?: Record<string, unknown>;
   status: string;
 }
 
@@ -32,6 +33,7 @@ export interface SMSProvider {
   requiresLoginCredential?: boolean;
   providerKind?: string;
   manualCheck?: boolean;
+  authMode?: string;
   lastBalance?: string;
   lastBalanceCheckedAt?: string;
   createdAt: string;
@@ -140,6 +142,14 @@ export interface ProviderPrice {
 
 export interface ProviderStock {
   amount: number;
+}
+
+export interface ProviderValidityOption {
+  value: string;
+  label: string;
+  minDays: number;
+  maxDays: number;
+  stock: number;
 }
 
 export interface ProviderQuote {

@@ -36,6 +36,9 @@ type Config struct {
 	SMS68BaseURL         string
 	SMS68Timeout         time.Duration
 	SMS68MetadataToken   string
+	SMS62USAPIKey        string
+	SMS62USBaseURL       string
+	SMS62USTimeout       time.Duration
 	OrderPollInterval    time.Duration
 	OrderTimeout         time.Duration
 	CardExportDir        string
@@ -72,6 +75,9 @@ func Load() Config {
 		SMS68BaseURL:         getEnv("SMS68_BASE_URL", "https://api.68sms.com"),
 		SMS68Timeout:         time.Duration(getEnvInt("SMS68_TIMEOUT_SECONDS", 15)) * time.Second,
 		SMS68MetadataToken:   getEnv("SMS68_METADATA_TOKEN", ""),
+		SMS62USAPIKey:        getEnv("SMS62US_API_KEY", ""),
+		SMS62USBaseURL:       getEnv("SMS62US_BASE_URL", "https://api.62-us.com"),
+		SMS62USTimeout:       time.Duration(getEnvInt("SMS62US_TIMEOUT_SECONDS", 15)) * time.Second,
 		OrderPollInterval:    time.Duration(getEnvInt("ORDER_POLL_INTERVAL_SECONDS", 8)) * time.Second,
 		OrderTimeout:         time.Duration(getEnvInt("ORDER_TIMEOUT_SECONDS", 1200)) * time.Second,
 		CardExportDir:        getEnv("CARD_EXPORT_DIR", "storage/card_exports"),

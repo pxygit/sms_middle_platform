@@ -245,17 +245,35 @@ input {
 }
 
 .manual-check-url {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
   min-width: 0;
   padding: 13px 16px;
+  border: 0;
   border-radius: 18px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
   background: rgba(20, 184, 166, 0.1);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.manual-check-url:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(20, 184, 166, 0.16);
+}
+
+.manual-check-url:disabled {
+  cursor: default;
+  opacity: 0.78;
 }
 
 .manual-check-url span {
+  grid-column: 1 / -1;
   display: block;
   color: #5f7889;
   font-size: 12px;
-  margin-bottom: 4px;
 }
 
 .manual-check-url strong {
@@ -266,8 +284,17 @@ input {
   font-size: 13px;
 }
 
+.manual-check-url svg {
+  align-self: center;
+  color: #0f766e;
+}
+
 :root[data-theme="dark"] .manual-check-url {
   background: rgba(103, 232, 249, 0.12);
+}
+
+:root[data-theme="dark"] .manual-check-url svg {
+  color: #67e8f9;
 }
 
 .empty-state {
@@ -464,6 +491,48 @@ input {
 
 .form-help {
   margin-bottom: 16px;
+}
+
+.sms62us-credential-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sms62us-auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(57, 197, 187, 0.28);
+  border-radius: 16px;
+  background: rgba(57, 197, 187, 0.08);
+}
+
+.sms62us-auth-row span {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.sms62us-account-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+
+.sms68-credential-grid {
+  display: grid;
+  gap: 2px;
+}
+
+.ant-form-item-tooltip {
+  color: rgba(15, 23, 42, 0.82);
+}
+
+:root[data-theme="dark"] .ant-form-item-tooltip {
+  color: rgba(226, 232, 240, 0.9);
 }
 
 .quote-row {
@@ -860,4 +929,21 @@ input {
   .hero-grid {
     margin-top: 34px;
   }
+}
+
+.validity-option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.validity-option-row small {
+  color: var(--muted);
+}
+
+.validity-option-row b {
+  color: var(--accent-2);
+  font-weight: 700;
 }

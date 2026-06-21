@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -75,6 +76,7 @@ func (s *OrderService) Create(ctx context.Context, cardCode string) (*model.Rece
 		ServiceID: card.ServiceConfig.ProviderServiceID,
 		PoolID:    card.ServiceConfig.ProviderPoolID,
 		MaxPrice:  card.ServiceConfig.MaxPrice,
+		Metadata:  json.RawMessage(card.ServiceConfig.Metadata),
 	})
 	if err != nil {
 		s.markFailed(order.ID, err.Error())

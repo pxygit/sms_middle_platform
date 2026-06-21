@@ -56,6 +56,7 @@ import {
   getDashboardStats,
   getProviderBalance,
   getProviderQuote,
+  getProviderValidityOptions,
   listAuditLogs,
   listCardBatches,
   listCardCodes,
@@ -71,7 +72,7 @@ import {
 } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { formatDateTime } from '../../utils/format';
-import type { AuditLog, DashboardRank, ProviderCountry, ProviderPrice, ProviderService, ProviderStock, SMSProvider } from '../../types/api';
+import type { AuditLog, DashboardRank, ProviderCountry, ProviderPrice, ProviderService, ProviderStock, ProviderValidityOption, SMSProvider } from '../../types/api';
 import { statusColor } from '../../utils/status';
 import { localizedError } from '../../utils/errors';
 
@@ -361,13 +362,57 @@ function ProvidersPage() {
 
   const openEdit = (record: SMSProvider) => {
     setEditing(record);
-    form.setFieldsValue({ ...record, apiKey: '', loginCredential: '' });
+    form.setFieldsValue({
+      ...record,
+      apiKey: '',
+      loginCredential: '',
+      authMode: record.code === '62-us' ? (record.authMode || 'account_password') : undefined,
+      account: '',
+      password: '',
+      sms68Token: '',
+      sms68Cookie: '',
+      sms68Communication: '',
+    });
     setOpen(true);
   };
   const submitProvider = (values: any) => {
     if (!editing) return;
     const nextValues = { ...values };
-    const hasCredential = Boolean(String(values.loginCredential || '').trim()) || Boolean(editing.loginCredentialSet || editing.metadataTokenSet);
+    let hasCredential = Boolean(String(values.loginCredential || '').trim()) || Boolean(editing.loginCredentialSet || editing.metadataTokenSet);
+
+    if (editing.code === '62-us') {
+      const authMode = values.authMode === 'openapi_token' ? 'openapi_token' : 'account_password';
+      nextValues.authMode = authMode;
+      if (authMode === 'account_password') {
+        delete nextValues.apiKey;
+        hasCredential = Boolean(String(values.account || '').trim() && String(values.password || '').trim()) || Boolean(editing.loginCredentialSet || editing.metadataTokenSet);
+      } else {
+        delete nextValues.account;
+        delete nextValues.password;
+        hasCredential = Boolean(String(values.apiKey || '').trim()) || Boolean(editing.apiKeySet);
+      }
+    }
+
+    if (editing.code !== '62-us') {
+      delete nextValues.authMode;
+      delete nextValues.account;
+      delete nextValues.password;
+    }
+
+    if (editing.code === '68sms') {
+      const loginCredential = buildSMS68LoginCredential(values);
+      if (loginCredential) {
+        nextValues.loginCredential = loginCredential;
+      } else {
+        delete nextValues.loginCredential;
+      }
+      hasCredential = Boolean(loginCredential) || Boolean(editing.loginCredentialSet || editing.metadataTokenSet);
+    }
+
+    delete nextValues.sms68Token;
+    delete nextValues.sms68Cookie;
+    delete nextValues.sms68Communication;
+
     if (editing.requiresLoginCredential && !hasCredential) {
       Modal.confirm({
         title: t('loginCredentialRequiredTitle'),
@@ -461,7 +506,6 @@ function ProvidersPage() {
         ]}
       />
       <Modal title={t('providerSettings')} open={open} footer={null} onCancel={() => setOpen(false)} width={640}>
-        <Alert className="form-help" type="info" showIcon message={t('providerSettingsHelp')} />
         <Form
           form={form}
           layout="vertical"
@@ -476,13 +520,30 @@ function ProvidersPage() {
           <Form.Item name="currencyCode" label={t('currencyCode')} rules={[{ required: true }]}>
             <Select showSearch options={currencyOptions.map((value) => ({ label: value, value }))} />
           </Form.Item>
-          <Form.Item name="apiKey" label={t('apiKey')} tooltip={t('apiKeyHelp')}>
-            <Input.Password placeholder={editing?.apiKeySet ? t('leaveBlankToKeep') : undefined} />
-          </Form.Item>
-          {editing?.requiresLoginCredential && (
+          {editing?.code === '62-us' ? (
+            <SMS62USCredentialFields editing={editing} />
+          ) : (
+            <Form.Item name="apiKey" label={t('apiKey')} tooltip={t('apiKeyHelp')}>
+              <Input.Password placeholder={editing?.apiKeySet ? t('leaveBlankToKeep') : undefined} />
+            </Form.Item>
+          )}
+          {editing?.requiresLoginCredential && editing.code === '68sms' && (
+            <div className="sms68-credential-grid">
+              <Form.Item name="sms68Token" label="Token" tooltip={t('sms68TokenHelp')}>
+                <Input.Password placeholder={(editing.loginCredentialSet || editing.metadataTokenSet) ? t('leaveBlankToKeep') : t('sms68TokenPlaceholder')} />
+              </Form.Item>
+              <Form.Item name="sms68Cookie" label="Cookie" tooltip={t('sms68CookieHelp')}>
+                <Input placeholder={(editing.loginCredentialSet || editing.metadataTokenSet) ? t('leaveBlankToKeep') : t('sms68CookiePlaceholder')} />
+              </Form.Item>
+              <Form.Item name="sms68Communication" label="Communication" tooltip={t('sms68CommunicationHelp')}>
+                <Input placeholder={(editing.loginCredentialSet || editing.metadataTokenSet) ? t('leaveBlankToKeep') : t('sms68CommunicationPlaceholder')} />
+              </Form.Item>
+            </div>
+          )}
+          {editing?.requiresLoginCredential && editing.code !== '68sms' && editing.code !== '62-us' && (
             <Form.Item name="loginCredential" label={t('loginCredential')} tooltip={t('loginCredentialHelp')}>
               <Input.TextArea
-                autoSize={{ minRows: 3, maxRows: 6 }}
+                autoSize={{ minRows: 4, maxRows: 8 }}
                 placeholder={(editing.loginCredentialSet || editing.metadataTokenSet) ? t('leaveBlankToKeep') : t('loginCredentialPlaceholder')}
               />
             </Form.Item>
@@ -509,6 +570,7 @@ function ServicesPage() {
   const providerCode = Form.useWatch('providerCode', form) || 'smspool';
   const countryId = Form.useWatch('providerCountryId', form);
   const serviceId = Form.useWatch('providerServiceId', form);
+  const validityType = Form.useWatch('validityType', form);
   const quoteUnsupported = providerCode === '68sms' && Boolean(countryId) && Boolean(serviceId);
   const query = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
@@ -526,13 +588,27 @@ function ServicesPage() {
     enabled: open && Boolean(providerCode) && Boolean(countryId),
   });
   const quote = useQuery({
-    queryKey: ['provider-quote', providerCode, countryId, serviceId],
-    queryFn: () => getProviderQuote(providerCode, { countryId, serviceId }),
-    enabled: open && Boolean(providerCode) && Boolean(countryId) && Boolean(serviceId) && providerCode !== '68sms',
+    queryKey: ['provider-quote', providerCode, countryId, serviceId, validityType],
+    queryFn: () => getProviderQuote(providerCode, { countryId, serviceId, poolId: validityType }),
+    enabled: open && Boolean(providerCode) && Boolean(countryId) && Boolean(serviceId) && !quoteUnsupported,
+  });
+  const validityOptions = useQuery({
+    queryKey: ['provider-validity-options', providerCode, countryId, serviceId],
+    queryFn: () => getProviderValidityOptions(providerCode, { countryId, serviceId }),
+    enabled: open && isLongLivedProvider && Boolean(countryId) && Boolean(serviceId),
   });
   const mutation = useMutation({
     mutationFn: (values: any) => {
-      const payload = { ...values, timeoutSeconds: isLongLivedProvider ? 0 : values.timeoutSeconds };
+      const selectedValidity = (validityOptions.data || []).find((item: ProviderValidityOption) => item.value === values.validityType);
+      const metadata = isLongLivedProvider ? {
+        ...(values.metadata || {}),
+        validityType: values.validityType,
+        endDay: values.validityType,
+        validityLabel: selectedValidity ? validityLabel(selectedValidity, t) : undefined,
+        validityStock: selectedValidity?.stock,
+      } : values.metadata;
+      const payload = { ...values, timeoutSeconds: isLongLivedProvider ? 0 : values.timeoutSeconds, metadata };
+      delete payload.validityType;
       return editing ? updateServiceConfig(editing.id, payload) : createServiceConfig(payload);
     },
     onSuccess: () => {
@@ -545,13 +621,14 @@ function ServicesPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteServiceConfig,
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['service-configs'] }),
+    onError: (error: Error) => message.error(localizedError(error.message, t)),
   });
   const rows = filterRows(query.data || [], keyword);
 
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ providerCode: 'smspool', timeoutSeconds: 1200, status: 'enabled' });
+    form.setFieldsValue({ providerCode: 'smspool', timeoutSeconds: 1200, status: 'enabled', metadata: undefined, validityType: undefined });
     setOpen(true);
   };
 
@@ -559,7 +636,7 @@ function ServicesPage() {
     setEditing(record);
     const provider = (providers.data || []).find((item) => item.code === record.providerCode);
     const longLived = Boolean(provider?.manualCheck || provider?.providerKind === 'long_lived' || record.providerCode === '68sms');
-    form.setFieldsValue({ ...record, timeoutSeconds: longLived ? 0 : record.timeoutSeconds });
+    form.setFieldsValue({ ...record, timeoutSeconds: longLived ? 0 : record.timeoutSeconds, validityType: serviceConfigValidityType(record.metadata) });
     setOpen(true);
   };
 
@@ -573,6 +650,8 @@ function ServicesPage() {
       displayName: '',
       targetPlatform: undefined,
       maxPrice: undefined,
+      metadata: undefined,
+      validityType: undefined,
     });
   };
 
@@ -584,17 +663,19 @@ function ServicesPage() {
       displayName: selected?.name || '',
       targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || '', selected?.name || ''),
       maxPrice: undefined,
+      metadata: undefined,
+      validityType: undefined,
     });
   };
 
   useEffect(() => {
-    if (providerCode === '68sms') return;
+    if (quoteUnsupported) return;
     const quotePrice = quote.data?.price;
     const lowPrice = quotePrice?.lowPrice || quotePrice?.price;
     if (open && lowPrice && !editing) {
       form.setFieldValue('maxPrice', Number(lowPrice));
     }
-  }, [editing, form, open, providerCode, quote.data]);
+  }, [editing, form, open, providerCode, quote.data, quoteUnsupported]);
 
   useEffect(() => {
     if (!open) return;
@@ -623,6 +704,7 @@ function ServicesPage() {
           centerColumn({ title: t('service'), dataIndex: 'displayName' }),
           centerColumn({ title: t('providerServiceId'), dataIndex: 'providerServiceId' }),
           centerColumn({ title: t('maxPrice'), render: (_: unknown, row: any) => formatMoney(row.maxPrice, currencyByProvider[row.providerCode]) }),
+          centerColumn({ title: t('numberValidity'), render: (_: unknown, row: any) => serviceConfigValidityDisplay(row.metadata, t) }),
           centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: any, b: any) => dateSorter(a.createdAt, b.createdAt) }),
           centerColumn({ title: t('status'), dataIndex: 'status', render: (value: string) => <StatusTag status={value} /> }),
           centerColumn({
@@ -655,6 +737,8 @@ function ServicesPage() {
             <Select
               options={(providers.data || []).map((item) => ({ label: item.name, value: item.code }))}
               onChange={(value) => {
+                const provider = (providers.data || []).find((item) => item.code === value);
+                const nextLongLived = Boolean(provider?.manualCheck || provider?.providerKind === 'long_lived' || value === '68sms');
                 form.setFieldsValue({
                   providerCode: value,
                   providerCountryId: undefined,
@@ -664,7 +748,9 @@ function ServicesPage() {
                   displayName: '',
                   targetPlatform: undefined,
                   maxPrice: undefined,
-                  timeoutSeconds: value === '68sms' ? 0 : 1200,
+                  metadata: undefined,
+                  validityType: undefined,
+                  timeoutSeconds: nextLongLived ? 0 : 1200,
                 });
               }}
             />
@@ -710,12 +796,32 @@ function ServicesPage() {
             stock={quote.data?.stock}
             currency={currencyByProvider[providerCode]}
           />
+          {isLongLivedProvider && (
+            <Form.Item name="validityType" label={t('numberValidity')} tooltip={t('numberValidityHelp')} rules={[{ required: true }]}>
+              <Select
+                loading={validityOptions.isFetching}
+                disabled={!countryId || !serviceId}
+                placeholder={serviceId ? t('numberValidityPlaceholder') : t('selectServiceFirst')}
+                optionLabelProp="label"
+                options={(validityOptions.data || []).map((item: ProviderValidityOption) => ({
+                  label: validityLabel(item, t),
+                  value: item.value,
+                }))}
+                optionRender={(option) => {
+                  const item = (validityOptions.data || []).find((entry: ProviderValidityOption) => entry.value === option.value);
+                  return item ? <ValidityOption option={item} /> : option.label;
+                }}
+              />
+            </Form.Item>
+          )}
           <Form.Item name="maxPrice" label={t('maxPrice')} tooltip={t('maxPriceHelp')} rules={[{ required: true }]}>
             <InputNumber min={0} precision={4} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="timeoutSeconds" label={t('timeoutSeconds')} tooltip={isLongLivedProvider ? t('timeoutLongLivedHelp') : t('timeoutHelp')}>
-            <InputNumber min={isLongLivedProvider ? 0 : 60} disabled={isLongLivedProvider} style={{ width: '100%' }} />
-          </Form.Item>
+          {!isLongLivedProvider && (
+            <Form.Item name="timeoutSeconds" label={t('timeoutSeconds')} tooltip={t('timeoutHelp')}>
+              <InputNumber min={60} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
           <Form.Item name="status" label={t('status')}>
             <Select options={['enabled', 'disabled'].map((item) => ({ label: t(item), value: item }))} />
           </Form.Item>
@@ -751,6 +857,7 @@ function BatchesPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteCardBatch,
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['card-batches'] }),
+    onError: (error: Error) => message.error(localizedError(error.message, t)),
   });
   const rows = filterRows(
     (batches.data || []).map((row: any) => ({
@@ -848,6 +955,7 @@ function CardsPage() {
       msg.success(t('delete'));
       void qc.invalidateQueries({ queryKey: ['card-codes'] });
     },
+    onError: (error: Error) => msg.error(localizedError(error.message, t)),
   });
   const rows = filterRows(query.data || [], keyword);
   return (
@@ -1193,6 +1301,63 @@ function RevealableCardCode({ id, masked }: { id: number; masked: string }) {
   );
 }
 
+function SMS62USCredentialFields({ editing }: { editing: SMSProvider }) {
+  const { t } = useTranslation();
+  const form = Form.useFormInstance();
+  const authMode = Form.useWatch('authMode', form) || 'account_password';
+  const useOpenAPI = authMode === 'openapi_token';
+  return (
+    <div className="sms62us-credential-panel">
+      <div className="sms62us-auth-row">
+        <span>{t('sms62usAuthMode')}</span>
+        <Button
+          size="small"
+          shape="round"
+          type={useOpenAPI ? 'primary' : 'default'}
+          onClick={() => form.setFieldValue('authMode', useOpenAPI ? 'account_password' : 'openapi_token')}
+        >
+          {t('sms62usUseOpenAPIToken')}
+        </Button>
+      </div>
+      <Form.Item name="authMode" hidden><Input /></Form.Item>
+      {useOpenAPI ? (
+        <Form.Item name="apiKey" label={t('apiKey')} tooltip={t('sms62usOpenAPITokenHelp')}>
+          <Input.Password placeholder={editing.apiKeySet ? t('leaveBlankToKeep') : t('sms62usOpenAPITokenPlaceholder')} />
+        </Form.Item>
+      ) : (
+        <div className="sms62us-account-grid">
+          <Form.Item name="account" label={t('sms62usAccount')} tooltip={t('sms62usAccountHelp')}>
+            <Input placeholder={editing.loginCredentialSet ? t('leaveBlankToKeep') : t('sms62usAccountPlaceholder')} />
+          </Form.Item>
+          <Form.Item name="password" label={t('sms62usPassword')} tooltip={t('sms62usPasswordHelp')}>
+            <Input.Password placeholder={editing.loginCredentialSet ? t('leaveBlankToKeep') : t('sms62usPasswordPlaceholder')} />
+          </Form.Item>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function buildSMS68LoginCredential(values: any) {
+  const token = String(values.sms68Token || '').trim();
+  const cookie = String(values.sms68Cookie || '').trim();
+  const communication = String(values.sms68Communication || '').trim();
+  const lines = [
+    token ? `Token: ${token}` : '',
+    cookie ? `Cookie: ${cookie}` : '',
+    communication ? `Communication: ${communication}` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+function ValidityOption({ option }: { option: ProviderValidityOption }) {
+  const { t } = useTranslation();
+  return (
+    <div className="validity-option-row">
+      <span>{validityLabel(option, t)}</span>
+      <small>{t('stock')} <b>{option.stock}</b></small>
+    </div>
+  );
+}
 function StatusTag({ status }: { status: string }) {
   const { t } = useTranslation();
   return <Tag color={statusColor(status)}>{translatedStatus(status, t)}</Tag>;
@@ -1297,6 +1462,28 @@ function serviceLabel(item: ProviderService) {
   return parts.join(' · ');
 }
 
+function serviceConfigValidityType(metadata: unknown) {
+  if (!metadata || typeof metadata !== 'object') return undefined;
+  const value = (metadata as { validityType?: unknown }).validityType;
+  return typeof value === 'string' ? value : undefined;
+}
+
+function serviceConfigValidityDisplay(metadata: unknown, t: (key: string, options?: any) => string) {
+  if (!metadata || typeof metadata !== 'object') return '-';
+  const value = metadata as { validityLabel?: unknown; validityMinDays?: unknown; validityMaxDays?: unknown; validityType?: unknown };
+  const min = Number(value.validityMinDays || 0);
+  const max = Number(value.validityMaxDays || 0);
+  if (min && max) return t('numberValidityDays', { min, max });
+  if (typeof value.validityLabel === 'string' && value.validityLabel.trim()) return value.validityLabel;
+  return typeof value.validityType === 'string' && value.validityType ? value.validityType : '-';
+}
+
+function validityLabel(option: ProviderValidityOption, t: (key: string, options?: any) => string) {
+  const min = option.minDays || 0;
+  const max = option.maxDays || 0;
+  if (min && max) return t('numberValidityDays', { min, max });
+  return option.label || option.value;
+}
 function providerCurrencyMap(providers: SMSProvider[]) {
   return providers.reduce<Record<string, string>>((result, provider) => {
     result[provider.code] = provider.currencyCode || 'USD';

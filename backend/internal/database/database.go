@@ -19,12 +19,13 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 		logLevel = logger.Info
 	}
 	return gorm.Open(postgres.Open(cfg.DatabaseDSN), &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
+		Logger:                                   logger.Default.LogMode(logLevel),
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 }
 
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&model.Admin{},
 		&model.SMSProvider{},
 		&model.ProviderCountry{},
@@ -36,7 +37,33 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.SupplierRequestLog{},
 		&model.AuditLog{},
 		&model.SiteVisit{},
-	)
+	); err != nil {
+		return err
+	}
+	return dropReceiveOrderServiceConfigConstraint(db)
+}
+
+func dropReceiveOrderServiceConfigConstraint(db *gorm.DB) error {
+	return db.Exec(`
+DO $$
+DECLARE
+	item record;
+BEGIN
+	FOR item IN
+		SELECT namespace.nspname AS schema_name, table_class.relname AS table_name, constraint_info.conname AS constraint_name
+		FROM pg_constraint constraint_info
+		JOIN pg_class table_class ON table_class.oid = constraint_info.conrelid
+		JOIN pg_namespace namespace ON namespace.oid = table_class.relnamespace
+		JOIN unnest(constraint_info.conkey) AS constraint_column(attnum) ON true
+		JOIN pg_attribute attribute_info ON attribute_info.attrelid = constraint_info.conrelid AND attribute_info.attnum = constraint_column.attnum
+		WHERE constraint_info.contype = 'f'
+		  AND table_class.relname = 'sys_receive_orders'
+		  AND attribute_info.attname = 'service_config_id'
+	LOOP
+		EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I', item.schema_name, item.table_name, item.constraint_name);
+	END LOOP;
+END $$;
+`).Error
 }
 
 func SeedDefaults(db *gorm.DB, cfg config.Config) error {
@@ -95,6 +122,16 @@ func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 		MetadataToken:   cfg.SMS68MetadataToken,
 		LongLived:       true,
 		LoginCredential: true,
+	}); err != nil {
+		return err
+	}
+	if err := seedProvider(db, cfg.DataEncryptionKey, providerSeed{
+		Code:         "62-us",
+		Name:         "\u4e00\u6d69\u7f8e\u56fd\u63a5\u7801",
+		BaseURL:      cfg.SMS62USBaseURL,
+		CurrencyCode: "USD",
+		APIKey:       cfg.SMS62USAPIKey,
+		LongLived:    true,
 	}); err != nil {
 		return err
 	}

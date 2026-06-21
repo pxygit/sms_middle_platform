@@ -91,6 +91,17 @@ func (s *ProviderMetadataService) Quote(ctx context.Context, providerCode string
 	return quote, nil
 }
 
+func (s *ProviderMetadataService) ValidityOptions(ctx context.Context, providerCode string, input sms.ValidityOptionsInput) ([]sms.ProviderValidityOption, error) {
+	provider, err := s.registry.Get(providerCode)
+	if err != nil {
+		return nil, err
+	}
+	validityProvider, ok := provider.(sms.ValidityOptionsProvider)
+	if !ok {
+		return nil, errors.New("provider does not support validity options")
+	}
+	return validityProvider.GetValidityOptions(ctx, input)
+}
 func (s *ProviderMetadataService) Balance(ctx context.Context, providerCode string) (*sms.ProviderBalance, error) {
 	provider, err := s.registry.Get(providerCode)
 	if err != nil {

@@ -54,6 +54,7 @@ type SMSProvider struct {
 	RequiresLoginCredential bool           `gorm:"-" json:"requiresLoginCredential"`
 	ProviderKind            string         `gorm:"-" json:"providerKind,omitempty"`
 	ManualCheck             bool           `gorm:"-" json:"manualCheck,omitempty"`
+	AuthMode                string         `gorm:"-" json:"authMode,omitempty"`
 }
 
 func (SMSProvider) TableName() string { return "sys_sms_providers" }
@@ -93,20 +94,21 @@ type ProviderService struct {
 func (ProviderService) TableName() string { return "sys_provider_services" }
 
 type ServiceConfig struct {
-	ID                uint      `gorm:"primaryKey" json:"id"`
-	ProviderCode      string    `gorm:"size:64;index;not null" json:"providerCode"`
-	TargetPlatform    string    `gorm:"size:128;index;not null" json:"targetPlatform"`
-	DisplayName       string    `gorm:"size:128;not null" json:"displayName"`
-	CountryCode       string    `gorm:"size:16;not null" json:"countryCode"`
-	CountryName       string    `gorm:"size:128" json:"countryName"`
-	ProviderCountryID string    `gorm:"size:64;not null" json:"providerCountryId"`
-	ProviderServiceID string    `gorm:"size:64;not null" json:"providerServiceId"`
-	ProviderPoolID    string    `gorm:"size:64" json:"providerPoolId"`
-	MaxPrice          float64   `gorm:"type:numeric(12,4);not null;default:0" json:"maxPrice"`
-	TimeoutSeconds    int       `gorm:"not null;default:1200" json:"timeoutSeconds"`
-	Status            string    `gorm:"size:32;not null;default:enabled" json:"status"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	ID                uint           `gorm:"primaryKey" json:"id"`
+	ProviderCode      string         `gorm:"size:64;index;not null" json:"providerCode"`
+	TargetPlatform    string         `gorm:"size:128;index;not null" json:"targetPlatform"`
+	DisplayName       string         `gorm:"size:128;not null" json:"displayName"`
+	CountryCode       string         `gorm:"size:16;not null" json:"countryCode"`
+	CountryName       string         `gorm:"size:128" json:"countryName"`
+	ProviderCountryID string         `gorm:"size:64;not null" json:"providerCountryId"`
+	ProviderServiceID string         `gorm:"size:64;not null" json:"providerServiceId"`
+	ProviderPoolID    string         `gorm:"size:64" json:"providerPoolId"`
+	MaxPrice          float64        `gorm:"type:numeric(12,4);not null;default:0" json:"maxPrice"`
+	TimeoutSeconds    int            `gorm:"not null;default:1200" json:"timeoutSeconds"`
+	Metadata          datatypes.JSON `gorm:"type:jsonb" json:"metadata"`
+	Status            string         `gorm:"size:32;not null;default:enabled" json:"status"`
+	CreatedAt         time.Time      `json:"createdAt"`
+	UpdatedAt         time.Time      `json:"updatedAt"`
 }
 
 func (ServiceConfig) TableName() string { return "sys_service_configs" }

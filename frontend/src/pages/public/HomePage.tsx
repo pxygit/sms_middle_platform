@@ -134,6 +134,7 @@ export function HomePage() {
     await navigator.clipboard.writeText(value);
     msg.success(t(successKey));
   };
+  const historyItems = (historyQuery.data || []).filter(hasReceivedPhone);
 
   return (
     <main className="public-shell">
@@ -236,7 +237,13 @@ export function HomePage() {
           <div className="glass-panel history-panel">
             <div className="section-title">{t('history')}</div>
             {historyQuery.isLoading && <Spin />}
-            {historyQuery.data?.filter(hasReceivedPhone).map((item) => (
+            {!historyQuery.isLoading && historyItems.length === 0 && (
+              <div className="empty-state">
+                <History size={28} />
+                <span>{t('noRecords')}</span>
+              </div>
+            )}
+            {historyItems.map((item) => (
               <div className="history-item" key={item.orderNo}>
                 <span>{formatPhone(item).display || item.orderNo}</span>
                 <Tag color={statusColor(item.status)}>{statusText(item.status, t)}</Tag>
@@ -329,10 +336,11 @@ function OrderCard({
         </div>
         {isManual && (
           <div className="manual-check-row">
-            <div className="manual-check-url">
+            <button className="manual-check-url" onClick={() => onCopy(order.messageUrl)} disabled={!order.messageUrl}>
               <span>{t('messageUrl')}</span>
               <strong>{order.messageUrl || '-'}</strong>
-            </div>
+              <Copy size={16} />
+            </button>
             <Button
               shape="round"
               type="primary"

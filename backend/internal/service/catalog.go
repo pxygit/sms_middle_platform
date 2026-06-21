@@ -9,6 +9,7 @@ import (
 	"sms-middle-platform/backend/internal/model"
 	"sms-middle-platform/backend/internal/util"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -25,21 +26,25 @@ type ProviderInput struct {
 	APIKey          string `json:"apiKey"`
 	LoginCredential string `json:"loginCredential"`
 	MetadataToken   string `json:"metadataToken"`
+	AuthMode        string `json:"authMode"`
+	Account         string `json:"account"`
+	Password        string `json:"password"`
 	Status          string `json:"status"`
 }
 
 type ServiceConfigInput struct {
-	ProviderCode      string  `json:"providerCode" binding:"required"`
-	TargetPlatform    string  `json:"targetPlatform" binding:"required"`
-	DisplayName       string  `json:"displayName" binding:"required"`
-	CountryCode       string  `json:"countryCode" binding:"required"`
-	CountryName       string  `json:"countryName"`
-	ProviderCountryID string  `json:"providerCountryId" binding:"required"`
-	ProviderServiceID string  `json:"providerServiceId" binding:"required"`
-	ProviderPoolID    string  `json:"providerPoolId"`
-	MaxPrice          float64 `json:"maxPrice"`
-	TimeoutSeconds    int     `json:"timeoutSeconds"`
-	Status            string  `json:"status"`
+	ProviderCode      string         `json:"providerCode" binding:"required"`
+	TargetPlatform    string         `json:"targetPlatform" binding:"required"`
+	DisplayName       string         `json:"displayName" binding:"required"`
+	CountryCode       string         `json:"countryCode" binding:"required"`
+	CountryName       string         `json:"countryName"`
+	ProviderCountryID string         `json:"providerCountryId" binding:"required"`
+	ProviderServiceID string         `json:"providerServiceId" binding:"required"`
+	ProviderPoolID    string         `json:"providerPoolId"`
+	MaxPrice          float64        `json:"maxPrice"`
+	TimeoutSeconds    int            `json:"timeoutSeconds"`
+	Metadata          datatypes.JSON `json:"metadata"`
+	Status            string         `json:"status"`
 }
 
 func NewCatalogService(db *gorm.DB, encryptionKey string, registry *sms.Registry) *CatalogService {
@@ -81,13 +86,27 @@ func (s *CatalogService) UpdateProvider(code string, input ProviderInput) (*mode
 		}
 		updates["api_key_cipher"] = cipherText
 	}
-	credential := providerLoginCredential(input)
-	if credential != "" {
-		cipherText, err := util.EncryptString(s.encryptionKey, credential)
+	if provider.Code == "62-us" {
+		credential, shouldUpdate, err := s.sms62USCredential(provider, input)
 		if err != nil {
 			return nil, err
 		}
-		updates["metadata_token_cipher"] = cipherText
+		if shouldUpdate {
+			cipherText, err := util.EncryptString(s.encryptionKey, credential)
+			if err != nil {
+				return nil, err
+			}
+			updates["metadata_token_cipher"] = cipherText
+		}
+	} else {
+		credential := providerLoginCredential(input)
+		if credential != "" {
+			cipherText, err := util.EncryptString(s.encryptionKey, credential)
+			if err != nil {
+				return nil, err
+			}
+			updates["metadata_token_cipher"] = cipherText
+		}
 	}
 	if err := s.db.Model(&provider).Updates(updates).Error; err != nil {
 		return nil, err
@@ -143,6 +162,9 @@ func (s *CatalogService) decorateProvider(provider *model.SMSProvider) {
 	provider.MetadataTokenSet = provider.MetadataTokenCipher != ""
 	provider.LoginCredentialSet = provider.MetadataTokenSet
 	provider.RequiresLoginCredential = provider.Code == "68sms" || providerCapability(provider.Capabilities, "login_credential")
+	if provider.Code == "62-us" {
+		provider.AuthMode = s.providerAuthMode(*provider)
+	}
 	if s.registry != nil {
 		if smsProvider, err := s.registry.Get(provider.Code); err == nil {
 			if longLived, ok := smsProvider.(sms.LongLivedProvider); ok {
@@ -152,6 +174,97 @@ func (s *CatalogService) decorateProvider(provider *model.SMSProvider) {
 			}
 		}
 	}
+}
+
+func (s *CatalogService) providerAuthMode(provider model.SMSProvider) string {
+	if provider.Code != "62-us" {
+		return ""
+	}
+	plain := ""
+	if provider.MetadataTokenCipher != "" {
+		decrypted, err := util.DecryptString(s.encryptionKey, provider.MetadataTokenCipher)
+		if err == nil {
+			plain = decrypted
+		}
+	}
+	credential := parseSMS62USCredential(plain)
+	if credential.AuthMode != "" {
+		return credential.AuthMode
+	}
+	if provider.APIKeyCipher != "" {
+		return "openapi_token"
+	}
+	return "account_password"
+}
+
+type sms62USCredential struct {
+	AuthMode string `json:"authMode"`
+	Account  string `json:"account,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
+func (s *CatalogService) sms62USCredential(provider model.SMSProvider, input ProviderInput) (string, bool, error) {
+	mode := strings.TrimSpace(input.AuthMode)
+	if mode == "" {
+		mode = "account_password"
+	}
+	existing := sms62USCredential{}
+	if provider.MetadataTokenCipher != "" {
+		plain, err := util.DecryptString(s.encryptionKey, provider.MetadataTokenCipher)
+		if err != nil {
+			return "", false, err
+		}
+		existing = parseSMS62USCredential(plain)
+	}
+	if mode != "openapi_token" {
+		mode = "account_password"
+	}
+	existing.AuthMode = mode
+	if strings.TrimSpace(input.Account) != "" {
+		existing.Account = strings.TrimSpace(input.Account)
+	}
+	if strings.TrimSpace(input.Password) != "" {
+		existing.Password = strings.TrimSpace(input.Password)
+	}
+	if credential := providerLoginCredential(input); credential != "" && input.Account == "" && input.Password == "" {
+		parsed := parseSMS62USCredential(credential)
+		if parsed.AuthMode != "" {
+			existing = parsed
+		} else {
+			existing.Account = credential
+		}
+	}
+	raw, err := json.Marshal(existing)
+	if err != nil {
+		return "", false, err
+	}
+	return string(raw), true, nil
+}
+
+func parseSMS62USCredential(value string) sms62USCredential {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return sms62USCredential{}
+	}
+	var credential sms62USCredential
+	if err := json.Unmarshal([]byte(value), &credential); err == nil {
+		credential.AuthMode = normalizeSMS62USAuthMode(credential.AuthMode)
+		credential.Account = strings.TrimSpace(credential.Account)
+		credential.Password = strings.TrimSpace(credential.Password)
+		return credential
+	}
+	if strings.Contains(value, ":") {
+		parts := strings.SplitN(value, ":", 2)
+		return sms62USCredential{AuthMode: "account_password", Account: strings.TrimSpace(parts[0]), Password: strings.TrimSpace(parts[1])}
+	}
+	return sms62USCredential{AuthMode: "account_password", Account: value}
+}
+
+func normalizeSMS62USAuthMode(value string) string {
+	if strings.TrimSpace(value) == "openapi_token" {
+		return "openapi_token"
+	}
+	return "account_password"
 }
 
 func providerCapability(raw []byte, key string) bool {
@@ -201,6 +314,7 @@ func (s *CatalogService) CreateServiceConfig(input ServiceConfigInput) (*model.S
 		ProviderPoolID:    input.ProviderPoolID,
 		MaxPrice:          input.MaxPrice,
 		TimeoutSeconds:    input.TimeoutSeconds,
+		Metadata:          input.Metadata,
 		Status:            input.Status,
 	}
 	if err := s.db.Create(&config).Error; err != nil {
@@ -231,6 +345,7 @@ func (s *CatalogService) UpdateServiceConfig(id uint, input ServiceConfigInput) 
 		"provider_pool_id":    input.ProviderPoolID,
 		"max_price":           input.MaxPrice,
 		"timeout_seconds":     input.TimeoutSeconds,
+		"metadata":            input.Metadata,
 		"status":              input.Status,
 	}
 	if updates["timeout_seconds"].(int) < 0 {
@@ -262,17 +377,38 @@ func (s *CatalogService) isLongLivedProvider(providerCode string) bool {
 
 func (s *CatalogService) DeleteServiceConfig(id uint) error {
 	var count int64
-	if err := s.db.Model(&model.CardCode{}).Where("service_config_id = ?", id).Count(&count).Error; err != nil {
+	if err := s.db.Model(&model.CardBatch{}).Where("service_config_id = ?", id).Count(&count).Error; err != nil {
 		return err
 	}
 	if count > 0 {
-		return errors.New("service config is already used by card codes")
+		return errors.New("SERVICE_CONFIG_HAS_CARD_BATCHES: current config has card batches, please delete the card batches before deleting this config")
 	}
-	if err := s.db.Model(&model.ReceiveOrder{}).Where("service_config_id = ?", id).Count(&count).Error; err != nil {
+	if err := s.dropReceiveOrderServiceConfigConstraint(); err != nil {
 		return err
 	}
-	if count > 0 {
-		return errors.New("service config is already used by orders")
-	}
+
 	return s.db.Delete(&model.ServiceConfig{}, id).Error
+}
+
+func (s *CatalogService) dropReceiveOrderServiceConfigConstraint() error {
+	return s.db.Exec(`
+DO $$
+DECLARE
+	item record;
+BEGIN
+	FOR item IN
+		SELECT namespace.nspname AS schema_name, table_class.relname AS table_name, constraint_info.conname AS constraint_name
+		FROM pg_constraint constraint_info
+		JOIN pg_class table_class ON table_class.oid = constraint_info.conrelid
+		JOIN pg_namespace namespace ON namespace.oid = table_class.relnamespace
+		JOIN unnest(constraint_info.conkey) AS constraint_column(attnum) ON true
+		JOIN pg_attribute attribute_info ON attribute_info.attrelid = constraint_info.conrelid AND attribute_info.attnum = constraint_column.attnum
+		WHERE constraint_info.contype = 'f'
+		  AND table_class.relname = 'sys_receive_orders'
+		  AND attribute_info.attname = 'service_config_id'
+	LOOP
+		EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I', item.schema_name, item.table_name, item.constraint_name);
+	END LOOP;
+END $$;
+`).Error
 }

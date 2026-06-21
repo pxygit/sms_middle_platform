@@ -94,35 +94,16 @@ type activityResponse struct {
 }
 
 type activityRule struct {
-	ID                int    `json:"id"`
-	ActCN             string `json:"act_cn"`
-	ActEN             string `json:"act_en"`
-	ActRuleID         int    `json:"act_rule_id"`
-	MinValue          int    `json:"min_value"`
-	MaxValue          int    `json:"max_value"`
-	Count             int    `json:"count"`
-	CountryID         int    `json:"country_id"`
-	CardType          int    `json:"card_type"`
-	CommissionPercent string `json:"commission_percent"`
-	DiscountPercent   string `json:"discount_percent"`
-	DiscountType      int    `json:"discount_type"`
-	IsValid           int    `json:"is_valid"`
-	StartTime         int64  `json:"start_time"`
-	EndTime           int64  `json:"end_time"`
+	ActRuleID int             `json:"act_rule_id"`
+	MinValue  int             `json:"min_value"`
+	MaxValue  int             `json:"max_value"`
+	Count     int             `json:"count"`
+	Raw       json.RawMessage `json:"-"`
 }
 
-type segmentResponse struct {
-	Code    int             `json:"code"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data"`
+type serviceConfigMetadata struct {
+	ValidityType string `json:"validityType"`
 }
-
-type serviceQuote struct {
-	Store    *storeRow       `json:"store,omitempty"`
-	Activity *activityRule   `json:"activity,omitempty"`
-	Segment  json.RawMessage `json:"segment,omitempty"`
-}
-
 type loginCredential struct {
 	Token         string
 	Cookie        string
@@ -163,7 +144,7 @@ func (c *Client) ProviderKind() sms.ProviderKind {
 	return sms.ProviderKind{
 		Kind:               "long_lived",
 		ManualCheck:        true,
-		MessageURLTemplate: "https://api.68sms.com/api/msg/get?key={token}",
+		MessageURLTemplate: "https://api.68sms.com/api/sms/get?key={token}",
 	}
 }
 
@@ -172,7 +153,7 @@ func (c *Client) GetMessageURL(token string) string {
 	if token == "" {
 		return ""
 	}
-	return baseURL + "/api/msg/get?key=" + url.QueryEscape(token)
+	return baseURL + "/api/sms/get?key=" + url.QueryEscape(token)
 }
 
 func (c *Client) GetBalance(ctx context.Context) (*sms.ProviderBalance, error) {
@@ -195,58 +176,73 @@ func (c *Client) GetBalance(ctx context.Context) (*sms.ProviderBalance, error) {
 }
 
 func (c *Client) RequestNumber(ctx context.Context, input sms.RequestNumberInput) (*sms.RequestNumberResult, error) {
-	operator := defaultOperatorID(input.PoolID)
-	rule, err := c.activeActivityRule(ctx, input.CountryID, input.ServiceID, operator)
-	if err != nil {
-		return nil, err
+	apiKey, _, _ := c.config()
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, sms.NewProviderError("AUTH_ERROR", "68sms api key is not configured")
 	}
-	if _, err := c.segment(ctx, input.CountryID, input.ServiceID, operator, rule.ActRuleID); err != nil {
-		return nil, err
-	}
-	query := url.Values{
-		"appId":        {input.ServiceID},
-		"countryId":    {input.CountryID},
-		"operatorId":   {operator},
-		"quantity":     {"1"},
-		"numberType":   {"1"},
-		"smsType":      {"1"},
-		"validityType": {strconv.Itoa(rule.ActRuleID)},
-	}
-	var out apiEnvelope
-	raw, status, err := c.requestAPI(ctx, http.MethodPost, "/api/number/get", query, &out)
-	if err != nil {
-		return nil, err
-	}
-	if status >= 400 {
-		return nil, fmt.Errorf("68sms http %d: %s", status, raw)
-	}
-	if !successCode(out.Code) {
-		return nil, providerError(statusCode(out.Code), firstNonEmpty(out.Message, out.Msg, string(raw)))
-	}
-	var numbers []numberRow
-	if err := json.Unmarshal(out.Data, &numbers); err != nil {
-		return nil, err
-	}
-	if len(numbers) == 0 || rawString(numbers[0].Number) == "" || strings.TrimSpace(numbers[0].Key) == "" {
-		return nil, sms.NewProviderError(sms.ErrProviderRejected, "68sms missing phone or message key")
-	}
-	phone := rawString(numbers[0].Number)
-	token := strings.TrimSpace(numbers[0].Key)
-	price, _ := c.GetPrice(ctx, sms.ProviderPriceInput{CountryID: input.CountryID, ServiceID: input.ServiceID, PoolID: operator})
-	cost, _ := strconv.ParseFloat(priceString(price), 64)
-	return &sms.RequestNumberResult{
-		SupplierOrderID:     token,
-		SupplierToken:       token,
-		PhoneNumber:         normalizePhone(phone),
-		PhoneCountryCode:    phoneCountryCode(phone),
-		PhoneNationalNumber: phoneNationalNumber(phone),
-		Country:             input.CountryID,
-		Service:             input.ServiceID,
-		Cost:                cost,
-		Raw:                 raw,
-	}, nil
-}
 
+	operator := defaultOperatorID(input.PoolID)
+	var lastErr error
+	for _, validityType := range validityTypes(input.Metadata) {
+		query := url.Values{
+			"key":          {apiKey},
+			"appId":        {input.ServiceID},
+			"countryId":    {input.CountryID},
+			"operatorId":   {operator},
+			"quantity":     {"1"},
+			"numberType":   {"1"},
+			"smsType":      {"1"},
+			"validityType": {validityType},
+			"segment":      {""},
+			"segmentBlock": {""},
+		}
+		var out apiEnvelope
+		raw, status, err := c.requestAPI(ctx, http.MethodGet, "/api/number/get", query, &out)
+		if err != nil {
+			return nil, err
+		}
+		if status >= 400 {
+			return nil, fmt.Errorf("68sms http %d: %s", status, raw)
+		}
+		if !successCode(out.Code) {
+			err := providerError(statusCode(out.Code), firstNonEmpty(out.Message, out.Msg, string(raw)))
+			var providerErr *sms.ProviderError
+			if errors.As(err, &providerErr) {
+				switch providerErr.Code {
+				case "AUTH_ERROR", sms.ErrBalance, sms.ErrRateLimited:
+					return nil, err
+				}
+			}
+			lastErr = err
+			continue
+		}
+		var numbers []numberRow
+		if err := json.Unmarshal(out.Data, &numbers); err != nil {
+			return nil, err
+		}
+		if len(numbers) == 0 || rawString(numbers[0].Number) == "" || strings.TrimSpace(numbers[0].Key) == "" {
+			lastErr = sms.NewProviderError(sms.ErrOutOfStock, "68sms returned no available number")
+			continue
+		}
+		phone := rawString(numbers[0].Number)
+		token := strings.TrimSpace(numbers[0].Key)
+		return &sms.RequestNumberResult{
+			SupplierOrderID:     token,
+			SupplierToken:       token,
+			PhoneNumber:         normalizePhone(phone),
+			PhoneCountryCode:    phoneCountryCode(phone),
+			PhoneNationalNumber: phoneNationalNumber(phone),
+			Country:             input.CountryID,
+			Service:             input.ServiceID,
+			Cost:                input.MaxPrice,
+			Raw:                 raw,
+		}, nil
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, sms.NewProviderError(sms.ErrOutOfStock, "68sms has no available number")
+}
 func (c *Client) CheckSMS(ctx context.Context, input sms.CheckSMSInput) (*sms.SMSResult, error) {
 	return &sms.SMSResult{Status: model.OrderActive, SupplierStatus: "manual_check"}, nil
 }
@@ -257,7 +253,7 @@ func (c *Client) CheckManualSMS(ctx context.Context, input sms.ManualSMSInput) (
 		return nil, sms.NewProviderError(sms.ErrOrderNotFound, "68sms message key is missing")
 	}
 	var out apiEnvelope
-	raw, status, err := c.getAPIWithKey(ctx, "/api/msg/get", url.Values{"key": {token}}, &out)
+	raw, status, err := c.getAPIWithKey(ctx, "/api/sms/get", url.Values{"key": {token}}, &out)
 	if err != nil {
 		return nil, err
 	}
@@ -330,6 +326,52 @@ func (c *Client) GetServices(ctx context.Context, countryID string) ([]sms.Provi
 	return services, nil
 }
 
+func (c *Client) GetValidityOptions(ctx context.Context, input sms.ValidityOptionsInput) ([]sms.ProviderValidityOption, error) {
+	countryID := strings.TrimSpace(input.CountryID)
+	if countryID == "" {
+		countryID = countryUS
+	}
+	serviceID := strings.TrimSpace(input.ServiceID)
+	if serviceID == "" {
+		return nil, sms.NewProviderError(sms.ErrPriceNotFound, "68sms service is required")
+	}
+	query := url.Values{
+		"appId":      {serviceID},
+		"countryId":  {countryID},
+		"operatorId": {strings.TrimSpace(input.PoolID)},
+		"cardType":   {"1"},
+		"smsType":    {"1"},
+	}
+	raw, status, err := c.getStoreWithCredential(ctx, "/admin/api/activity", query)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, storeHTTPError("activity", status, raw)
+	}
+	var out activityResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, sms.NewProviderError("AUTH_ERROR", "68sms login credential is invalid or expired")
+	}
+	if out.Code != 10000 && out.Code != 0 {
+		return nil, providerError(strconv.Itoa(out.Code), firstNonEmpty(out.Message, string(raw)))
+	}
+	options := make([]sms.ProviderValidityOption, 0, len(out.Data.Time))
+	for _, rule := range out.Data.Time {
+		if rule.ActRuleID <= 0 {
+			continue
+		}
+		options = append(options, sms.ProviderValidityOption{
+			Value:   strconv.Itoa(rule.ActRuleID),
+			Label:   fmt.Sprintf("%d-%d", rule.MinValue, rule.MaxValue),
+			MinDays: rule.MinValue,
+			MaxDays: rule.MaxValue,
+			Stock:   rule.Count,
+			Raw:     mustMarshal(rule),
+		})
+	}
+	return options, nil
+}
 func (c *Client) GetPrice(ctx context.Context, input sms.ProviderPriceInput) (*sms.ProviderPrice, error) {
 	row, err := c.findStoreRow(ctx, input.CountryID, input.ServiceID)
 	if err != nil {
@@ -345,33 +387,8 @@ func (c *Client) GetPrice(ctx context.Context, input sms.ProviderPriceInput) (*s
 }
 
 func (c *Client) GetStock(ctx context.Context, input sms.ProviderStockInput) (*sms.ProviderStock, error) {
-	quote, err := c.quote(ctx, input.CountryID, input.ServiceID, defaultOperatorID(input.PoolID))
-	if err != nil {
-		var providerErr *sms.ProviderError
-		if errors.As(err, &providerErr) && providerErr.Code == sms.ErrOutOfStock {
-			return &sms.ProviderStock{Amount: 0}, nil
-		}
-		return nil, err
-	}
-	return &sms.ProviderStock{Amount: quote.Activity.Count, Raw: mustMarshal(quote)}, nil
+	return &sms.ProviderStock{Amount: 0}, nil
 }
-
-func (c *Client) quote(ctx context.Context, countryID, serviceID, operatorID string) (*serviceQuote, error) {
-	row, err := c.findStoreRow(ctx, countryID, serviceID)
-	if err != nil {
-		return nil, err
-	}
-	rule, err := c.activeActivityRule(ctx, countryID, strconv.Itoa(row.AppID), operatorID)
-	if err != nil {
-		return nil, err
-	}
-	segment, err := c.segment(ctx, countryID, strconv.Itoa(row.AppID), operatorID, rule.ActRuleID)
-	if err != nil {
-		return nil, err
-	}
-	return &serviceQuote{Store: row, Activity: rule, Segment: segment}, nil
-}
-
 func (c *Client) findStoreRow(ctx context.Context, countryID, serviceID string) (*storeRow, error) {
 	rows, err := c.storeRows(ctx, countryID)
 	if err != nil {
@@ -416,77 +433,38 @@ func (c *Client) storeRows(ctx context.Context, countryID string) ([]storeRow, e
 	return out.Data.List, nil
 }
 
-func (c *Client) activeActivityRule(ctx context.Context, countryID, serviceID, operatorID string) (*activityRule, error) {
-	if countryID == "" {
-		countryID = countryUS
-	}
-	if serviceID == "" {
-		return nil, sms.NewProviderError(sms.ErrPriceNotFound, "68sms service is required")
-	}
-	query := url.Values{
-		"appId":      {serviceID},
-		"countryId":  {countryID},
-		"operatorId": {operatorID},
-		"cardType":   {"1"},
-		"smsType":    {"1"},
-	}
-	raw, status, err := c.getStoreWithCredential(ctx, "/admin/api/activity", query)
-	if err != nil {
-		return nil, err
-	}
-	if status >= 400 {
-		return nil, fmt.Errorf("68sms activity http %d: %s", status, raw)
-	}
-	var out activityResponse
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, sms.NewProviderError("AUTH_ERROR", "68sms login credential is invalid or expired")
-	}
-	if out.Code != 10000 && out.Code != 0 {
-		return nil, providerError(strconv.Itoa(out.Code), firstNonEmpty(out.Message, string(raw)))
-	}
-	var selected *activityRule
-	for index := range out.Data.Time {
-		rule := out.Data.Time[index]
-		if rule.ActRuleID <= 0 || rule.Count <= 0 {
-			continue
+func validityTypes(metadata json.RawMessage) []string {
+	values := make([]string, 0, 4)
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
 		}
-		if selected == nil || rule.ActRuleID > selected.ActRuleID {
-			selected = &rule
+		for _, existing := range values {
+			if existing == value {
+				return
+			}
 		}
+		values = append(values, value)
 	}
-	if selected == nil {
-		return nil, sms.NewProviderError(sms.ErrOutOfStock, "68sms has no available validity rule for this service")
+
+	var parsed serviceConfigMetadata
+	if len(metadata) > 0 && json.Unmarshal(metadata, &parsed) == nil {
+		add(parsed.ValidityType)
 	}
-	return selected, nil
+	for _, value := range []string{"4", "3", "2", "1"} {
+		add(value)
+	}
+	return values
 }
 
-func (c *Client) segment(ctx context.Context, countryID, serviceID, operatorID string, actRuleID int) (json.RawMessage, error) {
-	query := url.Values{
-		"type":       {"1"},
-		"smsType":    {"1"},
-		"appId":      {serviceID},
-		"countryId":  {countryID},
-		"operatorId": {operatorID},
-		"cardType":   {"1"},
-		"actRuleId":  {strconv.Itoa(actRuleID)},
+func storeHTTPError(action string, status int, raw json.RawMessage) error {
+	body := strings.TrimSpace(string(raw))
+	if status == http.StatusUnauthorized || status == http.StatusForbidden || status >= http.StatusInternalServerError || body == "" {
+		return sms.NewProviderError("AUTH_ERROR", fmt.Sprintf("68sms %s request failed with HTTP %d. Please check whether the login credential Token, Cookie, and Communication are complete and not expired", action, status))
 	}
-	raw, status, err := c.getStoreWithCredential(ctx, "/admin/did/segment", query)
-	if err != nil {
-		return nil, err
-	}
-	if status >= 400 {
-		return nil, fmt.Errorf("68sms segment http %d: %s", status, raw)
-	}
-	var out segmentResponse
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, sms.NewProviderError("AUTH_ERROR", "68sms login credential is invalid or expired")
-	}
-	if out.Code != 10000 && out.Code != 0 {
-		return nil, providerError(strconv.Itoa(out.Code), firstNonEmpty(out.Message, string(raw)))
-	}
-	return out.Data, nil
+	return fmt.Errorf("68sms %s http %d: %s", action, status, raw)
 }
-
 func defaultOperatorID(poolID string) string {
 	if strings.TrimSpace(poolID) != "" {
 		return strings.TrimSpace(poolID)

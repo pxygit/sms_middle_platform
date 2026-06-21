@@ -16,6 +16,7 @@ type RequestNumberInput struct {
 	ServiceID string
 	PoolID    string
 	MaxPrice  float64
+	Metadata  json.RawMessage
 }
 
 type RequestNumberResult struct {
@@ -113,6 +114,21 @@ type ProviderQuote struct {
 	Stock *ProviderStock `json:"stock,omitempty"`
 }
 
+type ValidityOptionsInput struct {
+	CountryID string
+	ServiceID string
+	PoolID    string
+}
+
+type ProviderValidityOption struct {
+	Value   string          `json:"value"`
+	Label   string          `json:"label"`
+	MinDays int             `json:"minDays"`
+	MaxDays int             `json:"maxDays"`
+	Stock   int             `json:"stock"`
+	Raw     json.RawMessage `json:"-"`
+}
+
 type ProviderKind struct {
 	Kind               string `json:"kind"`
 	ManualCheck        bool   `json:"manualCheck"`
@@ -141,6 +157,10 @@ type MetadataProvider interface {
 
 type CatalogProvider interface {
 	GetCatalog(ctx context.Context) (*ProviderCatalog, error)
+}
+
+type ValidityOptionsProvider interface {
+	GetValidityOptions(ctx context.Context, input ValidityOptionsInput) ([]ProviderValidityOption, error)
 }
 
 type ConfigurableProvider interface {
