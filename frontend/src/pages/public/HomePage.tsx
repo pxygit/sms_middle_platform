@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Input, Space, Spin, Tag, message } from 'antd';
-import { Copy, History, KeyRound, Phone, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
+import { Alert, Button, Input, Modal, Space, Spin, Tag, Tooltip, message } from 'antd';
+import { BellRing, Copy, History, KeyRound, Phone, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { cancelOrder, checkOrder, createOrder, getHistory, getOrder, recordVisit, verifyCard } from '../../api/public';
-import type { CardVerifyResult, ReceiveOrder } from '../../types/api';
+import { cancelOrder, checkOrder, createOrder, getHistory, getOrder, listPublicAnnouncements, markAnnouncementRead, recordVisit, verifyCard } from '../../api/public';
+import type { Announcement, CardVerifyResult, ReceiveOrder } from '../../types/api';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { localizedError } from '../../utils/errors';
+import { formatDateTime } from '../../utils/format';
 import { formatPhone } from '../../utils/phone';
 import { statusColor } from '../../utils/status';
 
@@ -45,7 +46,7 @@ export function HomePage() {
         return parsed.filter((item) => item?.cardCode && item?.order && !finalStatuses.includes(item.order.status));
       }
       if (parsed?.order && parsed?.cardCode) {
-      return finalStatuses.includes(parsed.order.status) ? [] : [parsed];
+        return finalStatuses.includes(parsed.order.status) ? [] : [parsed];
       }
       return finalStatuses.includes(parsed.status) ? [] : [{ cardCode: localStorage.getItem('lastCardCode') || '', order: parsed }];
     } catch {
@@ -53,6 +54,9 @@ export function HomePage() {
     }
   });
   const [showHistory, setShowHistory] = useState(false);
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
+  const [activeAnnouncement, setActiveAnnouncement] = useState<Announcement | null>(null);
+  const [readerId] = useState(getAnnouncementReaderId);
   const [now, setNow] = useState(Date.now());
   const [msg, contextHolder] = message.useMessage();
 
@@ -81,7 +85,32 @@ export function HomePage() {
     queryFn: () => getHistory(cardCode),
     enabled: showHistory && cardCode.length > 0,
   });
+  const announcementsQuery = useQuery({
+    queryKey: ['public-announcements', readerId],
+    queryFn: () => listPublicAnnouncements(readerId),
+  });
 
+  const readAnnouncementMutation = useMutation({
+    mutationFn: (id: number) => markAnnouncementRead(id, readerId),
+    onSuccess: () => announcementsQuery.refetch(),
+  });
+
+  useEffect(() => {
+    const items = announcementsQuery.data || [];
+    const modalAnnouncement = items.find((item) => item.notifyMode === 'modal' && item.unread && !localStorage.getItem(`announcementModalSeen:${item.id}`));
+    if (modalAnnouncement) {
+      localStorage.setItem(`announcementModalSeen:${modalAnnouncement.id}`, '1');
+      setActiveAnnouncement(modalAnnouncement);
+    }
+  }, [announcementsQuery.data]);
+
+  const openAnnouncement = (item: Announcement) => {
+    setActiveAnnouncement({ ...item, unread: false });
+    setAnnouncementOpen(false);
+    if (item.unread) {
+      readAnnouncementMutation.mutate(item.id);
+    }
+  };
   const verifyMutation = useMutation({
     mutationFn: verifyCard,
     onSuccess: (data) => {
@@ -146,6 +175,14 @@ export function HomePage() {
           <span>{t('brand')}</span>
         </div>
         <Space>
+          <AnnouncementBoard
+            open={announcementOpen}
+            items={announcementsQuery.data || []}
+            loading={announcementsQuery.isLoading}
+            onToggle={() => setAnnouncementOpen((value) => !value)}
+            onClose={() => setAnnouncementOpen(false)}
+            onOpen={openAnnouncement}
+          />
           <Button href={localStorage.getItem('adminToken') ? '/admin' : '/admin/login'} shape="round" type="text">
             {t('admin')}
           </Button>
@@ -253,11 +290,151 @@ export function HomePage() {
         )}
       </section>
 
+      <AnnouncementModal
+        announcement={activeAnnouncement}
+        onClose={() => {
+          if (activeAnnouncement?.unread) {
+            readAnnouncementMutation.mutate(activeAnnouncement.id);
+          }
+          setActiveAnnouncement(null);
+        }}
+      />
       <PublicFooter />
     </main>
   );
 }
 
+function AnnouncementBoard({
+  open,
+  items,
+  loading,
+  onToggle,
+  onClose,
+  onOpen,
+}: {
+  open: boolean;
+  items: Announcement[];
+  loading: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  onOpen: (item: Announcement) => void;
+}) {
+  const { t } = useTranslation();
+  const unreadCount = items.filter((item) => item.unread).length;
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('.announcement-board')) onClose();
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [onClose, open]);
+  return (
+    <div className={`announcement-board${open ? ' is-open' : ''}`}>
+      <Tooltip title={t('announcements')}>
+        <Button className="announcement-trigger" shape="circle" type="text" icon={<BellRing size={17} />} onClick={onToggle} aria-label={t('announcements')}>
+          {unreadCount > 0 && <span className="announcement-unread-badge" />}
+        </Button>
+      </Tooltip>
+      {open && (
+        <div className="announcement-popover">
+          <div className="announcement-popover-head">
+            <strong>{t('announcements')}</strong>
+            {unreadCount > 0 && <Tag color="blue">{t('unreadCount', { count: unreadCount })}</Tag>}
+          </div>
+          <div className="announcement-list">
+            {loading && <Spin />}
+            {!loading && items.length === 0 && <div className="announcement-empty">{t('noAnnouncements')}</div>}
+            {items.map((item) => (
+              <button className="announcement-list-item" key={item.id} onClick={() => onOpen(item)}>
+                <span>{item.title}</span>
+                <small>{formatDateTime(item.publishedAt || item.createdAt)}</small>
+                {item.unread && <i />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnnouncementModal({ announcement, onClose }: { announcement: Announcement | null; onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Modal
+      open={Boolean(announcement)}
+      title={announcement?.title}
+      onCancel={onClose}
+      onOk={onClose}
+      okText={t('read')}
+      cancelButtonProps={{ style: { display: 'none' } }}
+      className="announcement-modal"
+    >
+      <div className="announcement-modal-meta">{announcement && formatDateTime(announcement.publishedAt || announcement.createdAt)}</div>
+      <div className="markdown-body">{renderMarkdown(announcement?.content || '')}</div>
+    </Modal>
+  );
+}
+
+function renderMarkdown(text: string) {
+  const blocks = text.split(/\n{2,}/).map((block, index) => {
+    const trimmed = block.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('### ')) return <h3 key={index}>{renderInlineMarkdown(trimmed.slice(4))}</h3>;
+    if (trimmed.startsWith('## ')) return <h2 key={index}>{renderInlineMarkdown(trimmed.slice(3))}</h2>;
+    if (trimmed.startsWith('# ')) return <h1 key={index}>{renderInlineMarkdown(trimmed.slice(2))}</h1>;
+    const lines = trimmed.split('\n');
+    if (/^[-*] /.test(trimmed)) {
+      return <ul key={index}>{lines.map((line, lineIndex) => <li key={lineIndex}>{renderInlineMarkdown(line.replace(/^[-*] /, ''))}</li>)}</ul>;
+    }
+    return <p key={index}>{lines.map((line, lineIndex) => <span key={lineIndex}>{renderInlineMarkdown(line)}{lineIndex < lines.length - 1 && <br />}</span>)}</p>;
+  });
+  return blocks;
+}
+
+function renderInlineMarkdown(text: string) {
+  const parts: ReactNode[] = [];
+  const pattern = /(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    const token = match[0];
+    if (token.startsWith('**')) {
+      parts.push(<strong key={parts.length}>{token.slice(2, -2)}</strong>);
+    } else {
+      const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (link) {
+        const href = safeMarkdownHref(link[2]);
+        parts.push(href ? <a key={parts.length} href={href} target="_blank" rel="noreferrer">{link[1]}</a> : link[1]);
+      }
+    }
+    lastIndex = pattern.lastIndex;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts;
+}
+
+function safeMarkdownHref(value: string) {
+  const trimmed = value.trim();
+  try {
+    const url = new URL(trimmed, window.location.origin);
+    return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? trimmed : '';
+  } catch {
+    return '';
+  }
+}
+
+function getAnnouncementReaderId() {
+  const key = 'announcementReaderId';
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const value = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  localStorage.setItem(key, value);
+  return value;
+}
 function PublicFooter() {
   const { i18n, t } = useTranslation();
   return <footer className="public-footer" key={i18n.resolvedLanguage || i18n.language}>{t('copyright')}</footer>;

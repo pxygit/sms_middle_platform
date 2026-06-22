@@ -14,13 +14,14 @@ import (
 )
 
 type Services struct {
-	Admins    *service.AdminService
-	Audit     *service.AuditService
-	Catalog   *service.CatalogService
-	Meta      *service.ProviderMetadataService
-	Cards     *service.CardService
-	Orders    *service.OrderService
-	Dashboard *service.DashboardService
+	Admins        *service.AdminService
+	Audit         *service.AuditService
+	Catalog       *service.CatalogService
+	Meta          *service.ProviderMetadataService
+	Cards         *service.CardService
+	Orders        *service.OrderService
+	Dashboard     *service.DashboardService
+	Announcements *service.AnnouncementService
 }
 
 func New(cfg config.Config, services Services) *gin.Engine {
@@ -48,6 +49,7 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		cardHandler := publichandler.NewCardHandler(services.Cards)
 		orderHandler := publichandler.NewOrderHandler(services.Orders)
 		visitHandler := publichandler.NewVisitHandler(services.Dashboard)
+		announcementHandler := publichandler.NewAnnouncementHandler(services.Announcements)
 		publicAPI.POST("/cards/verify", cardHandler.Verify)
 		publicAPI.POST("/orders", orderHandler.Create)
 		publicAPI.GET("/orders/:orderNo", orderHandler.Get)
@@ -55,6 +57,8 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		publicAPI.POST("/orders/:orderNo/cancel", orderHandler.Cancel)
 		publicAPI.GET("/cards/history", orderHandler.History)
 		publicAPI.POST("/visits", visitHandler.Record)
+		publicAPI.GET("/announcements", announcementHandler.List)
+		publicAPI.POST("/announcements/:id/read", announcementHandler.MarkRead)
 	}
 
 	adminAPI := v1.Group("/admin")
@@ -68,6 +72,7 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		orderHandler := adminhandler.NewOrderHandler(services.Orders, services.Audit)
 		auditHandler := adminhandler.NewAuditHandler(services.Audit)
 		dashboardHandler := adminhandler.NewDashboardHandler(services.Dashboard)
+		announcementHandler := adminhandler.NewAnnouncementHandler(services.Announcements, services.Audit)
 
 		protected.POST("/auth/password", authHandler.ChangePassword)
 		protected.GET("/dashboard", dashboardHandler.Stats)
@@ -95,6 +100,10 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		protected.GET("/orders", orderHandler.List)
 		protected.POST("/orders/:id/cancel", orderHandler.Cancel)
 		protected.GET("/audit-logs", auditHandler.List)
+		protected.GET("/announcements", announcementHandler.List)
+		protected.POST("/announcements", announcementHandler.Create)
+		protected.PATCH("/announcements/:id", announcementHandler.Update)
+		protected.DELETE("/announcements/:id", announcementHandler.Delete)
 	}
 
 	return r

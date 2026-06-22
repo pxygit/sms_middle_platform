@@ -1,5 +1,6 @@
 import { api, unwrap } from './client';
 import type {
+  Announcement,
   AuditLog,
   CardBatch,
   CardCode,
@@ -134,4 +135,19 @@ export function listAuditLogs() {
 
 export function getDashboardStats() {
   return unwrap<DashboardStats>(api.get('/admin/dashboard'));
+}
+export function listAnnouncements(params?: { keyword?: string; status?: string; notifyMode?: string; limit?: number; offset?: number }) {
+  return unwrap<Announcement[]>(api.get('/admin/announcements', { params }));
+}
+
+export function createAnnouncement(payload: Partial<Announcement>) {
+  return unwrap<Announcement>(api.post('/admin/announcements', payload));
+}
+
+export function updateAnnouncement(id: number, payload: Partial<Announcement>) {
+  return unwrap<Announcement>(api.patch(`/admin/announcements/${id}`, payload));
+}
+
+export function deleteAnnouncement(id: number) {
+  return unwrap<{ deleted: boolean }>(api.delete(`/admin/announcements/${id}`));
 }

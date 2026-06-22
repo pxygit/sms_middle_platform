@@ -1,3 +1,19 @@
+export interface Announcement {
+  id: number;
+  title: string;
+  content: string;
+  status: 'draft' | 'active' | 'archived' | string;
+  notifyMode: 'modal' | 'silent' | string;
+  readCount: number;
+  startAt?: string;
+  endAt?: string;
+  createdBy?: number;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+  unread?: boolean;
+}
+
 export interface ApiResponse<T> {
   code: number;
   message: string;

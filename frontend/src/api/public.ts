@@ -1,5 +1,5 @@
 import { api, unwrap } from './client';
-import type { CardVerifyResult, ReceiveOrder } from '../types/api';
+import type { Announcement, CardVerifyResult, ReceiveOrder } from '../types/api';
 
 export function verifyCard(cardCode: string) {
   return unwrap<CardVerifyResult>(api.post('/public/cards/verify', { cardCode }));
@@ -27,4 +27,11 @@ export function getHistory(cardCode: string) {
 
 export function recordVisit(path = '/') {
   return unwrap<{ recorded: boolean }>(api.post('/public/visits', { path }));
+}
+export function listPublicAnnouncements(readerId: string) {
+  return unwrap<Announcement[]>(api.get('/public/announcements', { params: { readerId } }));
+}
+
+export function markAnnouncementRead(id: number, readerId: string) {
+  return unwrap<{ read: boolean }>(api.post(`/public/announcements/${id}/read`, { readerId }));
 }

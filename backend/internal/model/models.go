@@ -11,6 +11,13 @@ const (
 	StatusDisabled = "disabled"
 	StatusVoided   = "voided"
 
+	AnnouncementDraft    = "draft"
+	AnnouncementActive   = "active"
+	AnnouncementArchived = "archived"
+
+	AnnouncementNotifyModal  = "modal"
+	AnnouncementNotifySilent = "silent"
+
 	OrderCreated         = "created"
 	OrderActive          = "active"
 	OrderCompleted       = "completed"
@@ -226,3 +233,31 @@ type SiteVisit struct {
 }
 
 func (SiteVisit) TableName() string { return "sys_site_visits" }
+
+type Announcement struct {
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	Title       string     `gorm:"size:160;index;not null" json:"title"`
+	Content     string     `gorm:"type:text;not null" json:"content"`
+	Status      string     `gorm:"size:32;index;not null;default:draft" json:"status"`
+	NotifyMode  string     `gorm:"size:32;index;not null;default:silent" json:"notifyMode"`
+	ReadCount   int64      `gorm:"not null;default:0" json:"readCount"`
+	StartAt     *time.Time `gorm:"index" json:"startAt"`
+	EndAt       *time.Time `gorm:"index" json:"endAt"`
+	CreatedBy   uint       `gorm:"index" json:"createdBy"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+	PublishedAt *time.Time `json:"publishedAt"`
+}
+
+func (Announcement) TableName() string { return "sys_announcements" }
+
+type AnnouncementRead struct {
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	AnnouncementID uint      `gorm:"uniqueIndex:idx_announcement_reader;index;not null" json:"announcementId"`
+	ReaderID       string    `gorm:"size:128;uniqueIndex:idx_announcement_reader;not null" json:"readerId"`
+	IP             string    `gorm:"size:64" json:"ip"`
+	UserAgent      string    `gorm:"size:255" json:"userAgent"`
+	ReadAt         time.Time `gorm:"index;not null" json:"readAt"`
+}
+
+func (AnnouncementRead) TableName() string { return "sys_announcement_reads" }

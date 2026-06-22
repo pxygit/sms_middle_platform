@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   DatePicker,
+  Drawer,
   Popconfirm,
   Form,
   Input,
@@ -21,6 +22,7 @@ import {
   message,
 } from 'antd';
 import {
+  BellRing,
   Boxes,
   ClipboardList,
   Copy,
@@ -47,13 +49,16 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-r
 import { useTranslation } from 'react-i18next';
 import {
   changePassword,
+  createAnnouncement,
   createCardBatch,
+  deleteAnnouncement,
   createServiceConfig,
   deleteServiceConfig,
   deleteCardBatch,
   deleteCardCode,
   downloadCardBatch,
   getDashboardStats,
+  listAnnouncements,
   getProviderBalance,
   getProviderQuote,
   getProviderValidityOptions,
@@ -66,13 +71,14 @@ import {
   listProviders,
   listServiceConfigs,
   revealCardCode,
+  updateAnnouncement,
   updateProvider,
   updateServiceConfig,
   updateCardStatus,
 } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { formatDateTime } from '../../utils/format';
-import type { AuditLog, DashboardRank, ProviderCountry, ProviderPrice, ProviderService, ProviderStock, ProviderValidityOption, SMSProvider } from '../../types/api';
+import type { Announcement, AuditLog, DashboardRank, ProviderCountry, ProviderPrice, ProviderService, ProviderStock, ProviderValidityOption, SMSProvider } from '../../types/api';
 import { statusColor } from '../../utils/status';
 import { localizedError } from '../../utils/errors';
 
@@ -98,7 +104,7 @@ export function AdminLayout() {
   const selected = location.pathname.split('/')[2] || 'dashboard';
 
   return (
-    <Layout className="admin-shell">
+    <Layout className={`admin-shell${collapsed ? ' is-collapsed' : ''}`}>
       <Sider width={244} collapsedWidth={78} collapsed={collapsed} trigger={null} className="admin-sider">
         <div className="admin-brand-row">
           <Link to="/" className="admin-brand">
@@ -120,6 +126,7 @@ export function AdminLayout() {
           inlineCollapsed={collapsed}
           items={[
             { key: 'dashboard', icon: <Home size={18} />, label: <Link to="/admin">{t('dashboard')}</Link> },
+            { key: 'announcements', icon: <BellRing size={18} />, label: <Link to="/admin/announcements">{t('announcements')}</Link> },
             { key: 'providers', icon: <Database size={18} />, label: <Link to="/admin/providers">{t('providers')}</Link> },
             { key: 'services', icon: <Settings2 size={18} />, label: <Link to="/admin/services">{t('serviceConfigs')}</Link> },
             { key: 'batches', icon: <Boxes size={18} />, label: <Link to="/admin/batches">{t('cardBatches')}</Link> },
@@ -129,7 +136,7 @@ export function AdminLayout() {
           ]}
         />
       </Sider>
-      <Layout>
+      <Layout className="admin-main-layout">
         <Header className="admin-header">
           <PreferenceBar compact />
           <Space>
@@ -144,6 +151,7 @@ export function AdminLayout() {
         <Content className="admin-content">
           <Routes>
             <Route index element={<Dashboard />} />
+            <Route path="announcements" element={<AnnouncementsPage />} />
             <Route path="providers" element={<ProvidersPage />} />
             <Route path="services" element={<ServicesPage />} />
             <Route path="batches" element={<BatchesPage />} />
@@ -323,6 +331,146 @@ function RankPanel({ title, rows, loading, translateName = false }: { title: str
   );
 }
 
+function AnnouncementsPage() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [keyword, setKeyword] = useState('');
+  const [status, setStatus] = useState<string | undefined>();
+  const [notifyMode, setNotifyMode] = useState<string | undefined>();
+  const [editing, setEditing] = useState<Announcement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
+  const query = useQuery({ queryKey: ['announcements', keyword, status, notifyMode], queryFn: () => listAnnouncements({ keyword, status, notifyMode, limit: 200 }) });
+  const saveMutation = useMutation({
+    mutationFn: (values: Partial<Announcement>) => editing ? updateAnnouncement(editing.id, values) : createAnnouncement(values),
+    onSuccess: () => {
+      form.resetFields();
+      setEditing(null);
+      setOpen(false);
+      void qc.invalidateQueries({ queryKey: ['announcements'] });
+    },
+    onError: (error: Error) => message.error(localizedError(error.message, t)),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: deleteAnnouncement,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['announcements'] }),
+    onError: (error: Error) => message.error(localizedError(error.message, t)),
+  });
+  const openCreate = () => {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue({ status: 'draft', notifyMode: 'silent' });
+    setOpen(true);
+  };
+  const openEdit = (record: Announcement) => {
+    setEditing(record);
+    form.setFieldsValue({
+      ...record,
+      startAtInput: toDateTimeInput(record.startAt),
+      endAtInput: toDateTimeInput(record.endAt),
+    });
+    setOpen(true);
+  };
+  const submit = (values: any) => {
+    saveMutation.mutate({
+      title: values.title,
+      content: values.content,
+      status: values.status,
+      notifyMode: values.notifyMode,
+      startAt: fromDateTimeInput(values.startAtInput),
+      endAt: fromDateTimeInput(values.endAtInput),
+    });
+  };
+  const extraActions = (
+    <Space wrap>
+      <Select
+        allowClear
+        className="admin-filter-select"
+        placeholder={t('announcementStatus')}
+        value={status}
+        onChange={setStatus}
+        options={announcementStatusOptions(t)}
+      />
+      <Select
+        allowClear
+        className="admin-filter-select"
+        placeholder={t('notifyMode')}
+        value={notifyMode}
+        onChange={setNotifyMode}
+        options={announcementNotifyOptions(t)}
+      />
+    </Space>
+  );
+  return (
+    <div className="admin-page">
+      <PageHead
+        title={t('announcements')}
+        searchValue={keyword}
+        onSearchChange={setKeyword}
+        extraActions={extraActions}
+        onCreate={openCreate}
+        onRefresh={() => query.refetch()}
+      />
+      <Table
+        className="center-table"
+        scroll={{ x: 'max-content' }}
+        rowKey="id"
+        loading={query.isLoading}
+        dataSource={query.data || []}
+        pagination={tablePagination(t)}
+        columns={[
+          centerColumn({ title: t('announcementTitle'), dataIndex: 'title', width: 260 }),
+          centerColumn({ title: t('announcementStatus'), dataIndex: 'status', render: (value: string) => <Tag color={announcementStatusColor(value)}>{announcementStatusText(value, t)}</Tag> }),
+          centerColumn({ title: t('notifyMode'), dataIndex: 'notifyMode', render: (value: string) => <Tag color={value === 'modal' ? 'blue' : 'cyan'}>{announcementNotifyText(value, t)}</Tag> }),
+          centerColumn({ title: t('readCount'), dataIndex: 'readCount' }),
+          centerColumn({ title: t('validPeriod'), render: (_: unknown, row: Announcement) => formatAnnouncementPeriod(row, t) }),
+          centerColumn({ title: t('createdAt'), dataIndex: 'createdAt', render: formatDateTime, sorter: (a: Announcement, b: Announcement) => dateSorter(a.createdAt, b.createdAt) }),
+          centerColumn({
+            title: t('actions'),
+            fixed: 'right',
+            render: (_: unknown, row: Announcement) => (
+              <Space>
+                <Tooltip title={t('edit')}>
+                  <Button size="small" shape="circle" icon={<Pencil size={15} />} onClick={() => openEdit(row)} />
+                </Tooltip>
+                <Popconfirm title={t('confirmDelete')} onConfirm={() => deleteMutation.mutate(row.id)}>
+                  <Button size="small" shape="circle" danger icon={<Trash2 size={15} />} />
+                </Popconfirm>
+              </Space>
+            ),
+          }),
+        ]}
+      />
+      <Drawer title={editing ? t('editAnnouncement') : t('createAnnouncement')} width={860} open={open} onClose={() => setOpen(false)}>
+        <Form form={form} layout="vertical" onFinish={submit}>
+          <Form.Item name="title" label={t('announcementTitle')} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="content" label={t('announcementContent')} rules={[{ required: true }]}>
+            <Input.TextArea autoSize={{ minRows: 7, maxRows: 14 }} />
+          </Form.Item>
+          <div className="announcement-form-grid">
+            <Form.Item name="status" label={t('announcementStatus')} rules={[{ required: true }]}>
+              <Select options={announcementStatusOptions(t)} />
+            </Form.Item>
+            <Form.Item name="notifyMode" label={t('notifyMode')} tooltip={t('notifyModeHelp')} rules={[{ required: true }]}>
+              <Select options={announcementNotifyOptions(t)} />
+            </Form.Item>
+          </div>
+          <div className="announcement-form-grid">
+            <Form.Item name="startAtInput" label={t('startAt')} tooltip={t('announcementTimeHelp')}>
+              <Input type="datetime-local" />
+            </Form.Item>
+            <Form.Item name="endAtInput" label={t('endAt')} tooltip={t('announcementTimeHelp')}>
+              <Input type="datetime-local" />
+            </Form.Item>
+          </div>
+          <Button htmlType="submit" type="primary" shape="round" loading={saveMutation.isPending}>{t('save')}</Button>
+        </Form>
+      </Drawer>
+    </div>
+  );
+}
 function ProvidersPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -1338,6 +1486,50 @@ function SMS62USCredentialFields({ editing }: { editing: SMSProvider }) {
   );
 }
 
+function announcementStatusOptions(t: (key: string, options?: any) => string) {
+  return ['draft', 'active', 'archived'].map((value) => ({ label: announcementStatusText(value, t), value }));
+}
+
+function announcementNotifyOptions(t: (key: string, options?: any) => string) {
+  return ['silent', 'modal'].map((value) => ({ label: announcementNotifyText(value, t), value }));
+}
+
+function announcementStatusText(status: string, t: (key: string, options?: any) => string) {
+  const key = `announcementStatus_${status}`;
+  const translated = t(key);
+  return translated === key ? status : translated;
+}
+
+function announcementNotifyText(mode: string, t: (key: string, options?: any) => string) {
+  const key = `announcementNotify_${mode}`;
+  const translated = t(key);
+  return translated === key ? mode : translated;
+}
+
+function announcementStatusColor(status: string) {
+  if (status === 'active') return 'green';
+  if (status === 'archived') return 'gold';
+  return 'default';
+}
+
+function formatAnnouncementPeriod(row: Announcement, t: (key: string, options?: any) => string) {
+  if (!row.startAt && !row.endAt) return t('permanent');
+  return `${row.startAt ? formatDateTime(row.startAt) : t('now')} - ${row.endAt ? formatDateTime(row.endAt) : t('noExpiry')}`;
+}
+
+function toDateTimeInput(value?: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  const pad = (num: number) => String(num).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fromDateTimeInput(value?: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
 function buildSMS68LoginCredential(values: any) {
   const token = String(values.sms68Token || '').trim();
   const cookie = String(values.sms68Cookie || '').trim();
@@ -1459,7 +1651,7 @@ function countryLabel(item: ProviderCountry) {
 function serviceLabel(item: ProviderService) {
   const parts = [item.name];
   if (item.providerServiceId) parts.push(item.providerServiceId);
-  return parts.join(' · ');
+  return parts.join(' 璺?');
 }
 
 function serviceConfigValidityType(metadata: unknown) {

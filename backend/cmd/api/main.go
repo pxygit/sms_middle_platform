@@ -54,6 +54,7 @@ func main() {
 	cards := service.NewCardService(db, cfg.CardExportDir, cfg.DataEncryptionKey)
 	orders := service.NewOrderService(db, registry)
 	dashboard := service.NewDashboardService(db)
+	announcements := service.NewAnnouncementService(db)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -61,13 +62,14 @@ func main() {
 	job.NewProviderMetadataSyncer(meta).Start(ctx)
 
 	engine := router.New(cfg, router.Services{
-		Admins:    admins,
-		Audit:     audit,
-		Catalog:   catalog,
-		Meta:      meta,
-		Cards:     cards,
-		Orders:    orders,
-		Dashboard: dashboard,
+		Admins:        admins,
+		Audit:         audit,
+		Catalog:       catalog,
+		Meta:          meta,
+		Cards:         cards,
+		Orders:        orders,
+		Dashboard:     dashboard,
+		Announcements: announcements,
 	})
 	if err := engine.Run(cfg.HTTPAddr); err != nil {
 		log.Fatalf("run server: %v", err)
