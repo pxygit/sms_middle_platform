@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <img alt="Go" src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go&logoColor=white">
-  <img alt="React" src="https://img.shields.io/badge/React-19+-61DAFB?style=flat-square&logo=react&logoColor=111111">
-  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16+-4169E1?style=flat-square&logo=postgresql&logoColor=white">
-  <img alt="Docker" src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white">
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-green?style=flat-square">
+  <a href="https://go.dev/" target="_blank" rel="noreferrer"><img alt="Go" src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go&logoColor=white"></a>
+  <a href="https://react.dev/" target="_blank" rel="noreferrer"><img alt="React" src="https://img.shields.io/badge/React-19+-61DAFB?style=flat-square&logo=react&logoColor=111111"></a>
+  <a href="https://www.postgresql.org/" target="_blank" rel="noreferrer"><img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16+-4169E1?style=flat-square&logo=postgresql&logoColor=white"></a>
+  <a href="https://www.docker.com/" target="_blank" rel="noreferrer"><img alt="Docker" src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-green?style=flat-square"></a>
 </p>
 
 ---
