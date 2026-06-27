@@ -41,3 +41,7 @@ storage/
 # Editor/IDE
 # .idea/
 # .vscode/
+# Deployment runtime files
+deploy/.env
+deploy/data/
+deploy/backups/
