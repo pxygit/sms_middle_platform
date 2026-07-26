@@ -192,9 +192,9 @@ Token 由 `POST /api/v1/admin/auth/login` 返回。Token 无效或过期时返�
   "cardCodeId": 10,
   "providerCode": "68sms",
   "serviceConfigId": 3,
-  "supplierOrderId": "7421446db39bf648d8a52844a83b60d1",
-  "supplierToken": "7421446db39bf648d8a52844a83b60d1",
-  "phoneNumber": "+12722917613",
+  "supplierOrderId": "0123456789abcdef0123456789abcdef",
+  "supplierToken": "0123456789abcdef0123456789abcdef",
+  "phoneNumber": "+14155550123",
   "phoneCountryCode": "1",
   "phoneNationalNumber": "2722917613",
   "verificationCode": "78890",
@@ -205,7 +205,7 @@ Token 由 `POST /api/v1/admin/auth/login` 返回。Token 无效或过期时返�
   "supplierStatus": "10000",
   "providerKind": "long_lived",
   "manualCheck": true,
-  "messageUrl": "https://api.68sms.com/api/sms/get?key=7421446db39bf648d8a52844a83b60d1",
+  "messageUrl": "https://api.68sms.com/api/sms/get?key=0123456789abcdef0123456789abcdef",
   "failureReason": "",
   "startedAt": "2026-06-14T15:52:33+08:00",
   "receivedAt": "2026-06-14T15:55:10+08:00",
@@ -363,15 +363,15 @@ Content-Type: application/json
   "data": {
     "orderNo": "R202606141552330002",
     "providerCode": "68sms",
-    "supplierOrderId": "7421446db39bf648d8a52844a83b60d1",
-    "supplierToken": "7421446db39bf648d8a52844a83b60d1",
-    "phoneNumber": "+12722917613",
+    "supplierOrderId": "0123456789abcdef0123456789abcdef",
+    "supplierToken": "0123456789abcdef0123456789abcdef",
+    "phoneNumber": "+14155550123",
     "phoneCountryCode": "1",
     "phoneNationalNumber": "2722917613",
     "status": "completed",
     "manualCheck": true,
     "providerKind": "long_lived",
-    "messageUrl": "https://api.68sms.com/api/sms/get?key=7421446db39bf648d8a52844a83b60d1"
+    "messageUrl": "https://api.68sms.com/api/sms/get?key=0123456789abcdef0123456789abcdef"
   }
 }
 ```
@@ -864,7 +864,7 @@ Content-Type: application/json
   "baseUrl": "https://api.68sms.com",
   "currencyCode": "USD",
   "apiKey": "YOUR_API_KEY",
-  "loginCredential": "Token: xxx\nCookie: user=xxx; pass=xxx\nCommunication: wgwZhI971t0obO+Pj/BJA==",
+  "loginCredential": "Token: xxx\nCookie: user=xxx; pass=xxx\nCommunication: <base64-communication-value>",
   "status": "enabled"
 }
 ```
@@ -889,7 +889,7 @@ Content-Type: application/json
 ```text
 Token: eyJ0eXAiOiJKV1Qi...
 Cookie: user=xxx; pass=xxx
-Communication: wgwZhI971t0obO+Pj/BJA==
+Communication: <base64-communication-value>
 ```
 
 `62-us` 账号密码模式请求示例：

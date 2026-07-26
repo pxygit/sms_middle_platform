@@ -27,12 +27,12 @@ SunnySMS is an enterprise-oriented SMS number and verification-code receiving pl
 - Admin console for service configuration, card batch generation, TXT export, card management, and order management.
 - Supports both short-lived instant SMS providers and long-lived number providers.
 - Provider adapter architecture keeps business logic independent from supplier-specific APIs.
-- Integrated providers include `smspool`, `firefox`, `herosms`, `smsbower`, `lubansms`, `68sms`, and `62-us`.
+- Integrated providers include `smspool`, `firefox`, `herosms`, `smsbower`, `5sim`, `lubansms`, `68sms`, and `62-us`.
 - Card codes are not stored in plaintext. Only hashes and masked values are stored in the database.
 - Provider balance checks, country/service metadata synchronization, and order cost tracking.
 - Light/Dark theme and Simplified Chinese/English language switching.
 - Admin announcements, audit logs, password change, and token-expiration login redirect.
-- Docker Compose deployment with a one-command `install.sh` installer.
+- Three deployment options with built-in environment checks: one-command Docker Compose install, native Linux install (systemd), and native Windows install.
 
 ### Technology Stack
 
@@ -44,7 +44,18 @@ SunnySMS is an enterprise-oriented SMS number and verification-code receiving pl
 | UI | Ant Design, Lucide Icons |
 | Deployment | Docker, Docker Compose, Nginx |
 
-### Quick Deployment with Docker
+### Deployment Options
+
+| Option | Requirements | Best for |
+| --- | --- | --- |
+| ① One-command Docker install | Docker 24+ / Compose v2 | Production Linux servers (recommended, verified on Ubuntu 24.04) |
+| ② Native Linux install | Go 1.25+ / Node 20.19+ / PostgreSQL | Linux servers without Docker, managed by systemd |
+| ③ Native Windows install | Go 1.25+ / Node 20.19+ / PostgreSQL | Windows evaluation and development |
+
+All three installers verify the environment first and abort with copy-paste
+install commands when a dependency is missing.
+
+### Option 1: Quick Deployment with Docker
 
 A Linux server with Docker is the recommended production deployment method.
 
@@ -111,6 +122,43 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
 # Rebuild after code changes
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 ```
+
+### Option 2: Native Linux Deployment (systemd)
+
+For servers without Docker, adapted for Ubuntu 24.04:
+
+```bash
+chmod +x deploy/native/install-native-linux.sh
+./deploy/native/install-native-linux.sh
+```
+
+The script checks Go >= 1.25, Node.js >= 20.19, npm, and PostgreSQL (aborting
+with Ubuntu 24.04 install commands when missing), provisions the `sunnysms`
+database idempotently, generates `deploy/native/.env` with random secrets,
+builds the frontend and backend, and installs a `sunnysms` systemd service.
+The Go process serves both the API and the frontend (`STATIC_DIR`), so no
+Nginx is required.
+
+```bash
+sudo systemctl status sunnysms
+sudo systemctl restart sunnysms
+sudo journalctl -u sunnysms -f
+```
+
+Re-running the script rebuilds and restarts the service while keeping the
+existing `.env`.
+
+### Option 3: Native Windows Deployment
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\native\install-native-windows.ps1
+```
+
+The script checks Go / Node.js / PostgreSQL (with `winget` install hints),
+prompts once for the local `postgres` superuser password to create the
+application database, generates `deploy/native/.env`, builds both ends, and
+starts `sunnysms-api.exe` with a health check. Stop it with
+`Stop-Process -Name sunnysms-api`.
 
 ### Data Persistence and Migration
 
@@ -181,6 +229,7 @@ Important variables:
 | `DATA_ENCRYPTION_KEY` | Provider credentials and sensitive data encryption key |
 | `ADMIN_DEFAULT_USERNAME` | Initial admin username |
 | `ADMIN_DEFAULT_PASSWORD` | Initial admin password |
+| `STATIC_DIR` | Frontend build directory served by the Go process (native deployments) |
 | `CARD_EXPORT_DIR` | Card-code TXT export directory |
 | `ORDER_POLL_INTERVAL_SECONDS` | SMS polling interval |
 | `ORDER_TIMEOUT_SECONDS` | Short-lived order timeout |
@@ -189,7 +238,7 @@ Important variables:
 
 - Change the default admin password in production.
 - Use strong random values for `JWT_SECRET` and `DATA_ENCRYPTION_KEY`.
-- Never commit `deploy/.env`, `backend/.env`, or `deploy/data/`.
+- Never commit `deploy/.env`, `deploy/native/.env`, `backend/.env`, or `deploy/data/`.
 - Deploy behind an HTTPS reverse proxy when exposed publicly.
 - Manage supplier API keys carefully and restrict outbound server IPs when possible.
 
