@@ -2,14 +2,17 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #14213d;
   background: #effdf9;
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 :root[data-theme="dark"] {
   color: #e6fbff;
   background: #08111f;
+  color-scheme: dark;
 }
 
 * {
@@ -257,8 +260,18 @@ input {
   max-width: 720px;
   margin: 18px 0 14px;
   font-size: clamp(38px, 6vw, 76px);
-  line-height: 1.02;
+  line-height: 1.08;
   letter-spacing: 0;
+  background: linear-gradient(118deg, #0f766e 0%, #14b8a6 46%, #2563eb 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #0f766e;
+}
+
+:root[data-theme="dark"] .hero-copy h1 {
+  background-image: linear-gradient(118deg, #5eead4 0%, #67e8f9 46%, #93c5fd 100%);
+  color: #5eead4;
 }
 
 .hero-copy p {
@@ -276,14 +289,15 @@ input {
   border: 1px solid rgba(20, 184, 166, 0.18);
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 24px 70px rgba(15, 118, 110, 0.12);
+  box-shadow: 0 24px 70px rgba(15, 118, 110, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 :root[data-theme="dark"] .glass-panel {
   border-color: rgba(94, 234, 212, 0.16);
   background: rgba(10, 25, 43, 0.74);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(148, 233, 255, 0.07);
 }
 
 .flow-panel {
@@ -499,6 +513,10 @@ input {
   box-shadow: 0 12px 30px rgba(20, 184, 166, 0.16);
 }
 
+.metric:active {
+  transform: translateY(0) scale(0.99);
+}
+
 .metric span {
   grid-column: 1 / -1;
   color: #5f7889;
@@ -508,10 +526,13 @@ input {
 .metric strong {
   font-size: clamp(22px, 3vw, 34px);
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 .code-metric strong {
   color: #0f766e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 2px;
 }
 
 :root[data-theme="dark"] .code-metric strong {
@@ -528,8 +549,23 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px 0;
+  margin: 0 -8px;
+  padding: 12px 8px;
   border-bottom: 1px solid rgba(125, 148, 164, 0.18);
+  border-radius: 12px;
+  transition: background-color 0.15s ease;
+}
+
+.history-item:hover {
+  background-color: rgba(20, 184, 166, 0.08);
+}
+
+.history-item:last-child {
+  border-bottom-color: transparent;
+}
+
+.history-panel {
+  animation: rise-in 0.3s ease both;
 }
 
 .public-footer {
@@ -1179,4 +1215,233 @@ input {
 
 :root[data-theme="dark"] .admin-shell {
   background: #08111f;
+}
+
+/* ---------- Polish: motion, depth, and detail ---------- */
+
+::selection {
+  background: rgba(20, 184, 166, 0.28);
+}
+
+.route-fallback {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+}
+
+/* Decorative floating glow orbs — transform-only animation, GPU friendly. */
+.public-shell::before,
+.public-shell::after,
+.admin-login-shell::before {
+  position: absolute;
+  z-index: 0;
+  width: 380px;
+  height: 380px;
+  border-radius: 999px;
+  content: "";
+  pointer-events: none;
+  filter: blur(70px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+.public-shell::before {
+  top: -120px;
+  left: -90px;
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.5), transparent 70%);
+  animation: drift 22s ease-in-out infinite alternate;
+}
+
+.public-shell::after {
+  top: 8%;
+  right: -130px;
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.45), transparent 70%);
+  animation: drift 27s ease-in-out -9s infinite alternate-reverse;
+}
+
+.admin-login-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-login-shell::before {
+  top: -110px;
+  right: -80px;
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.45), transparent 70%);
+  animation: drift 24s ease-in-out infinite alternate;
+}
+
+:root[data-theme="dark"] .public-shell::before,
+:root[data-theme="dark"] .admin-login-shell::before {
+  opacity: 0.3;
+}
+
+:root[data-theme="dark"] .public-shell::after {
+  opacity: 0.28;
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(56px, 44px, 0) scale(1.15);
+  }
+}
+
+/* Keep real content above the decorative layer. */
+.topbar {
+  position: relative;
+}
+
+.topbar,
+.hero-grid,
+.status-section,
+.public-footer {
+  z-index: 1;
+}
+
+.login-card {
+  position: relative;
+  z-index: 1;
+  animation: rise-in 0.5s ease both;
+}
+
+/* Admin route transitions: pages fade-slide in on every switch. */
+.admin-page {
+  animation: route-in 0.24s ease both;
+}
+
+@keyframes route-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.admin-content {
+  overscroll-behavior: contain;
+  transition: background-color 0.3s ease;
+}
+
+.admin-header {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+:root[data-theme="dark"] .admin-header {
+  border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+.admin-sider {
+  transition: background-color 0.3s ease;
+}
+
+/* Tables read as floating cards. */
+.admin-page .ant-table-wrapper .ant-table {
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(15, 118, 110, 0.07);
+}
+
+:root[data-theme="dark"] .admin-page .ant-table-wrapper .ant-table {
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+}
+
+/* Dashboard cards: gentle lift on hover. */
+.stat-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 24px 60px rgba(15, 118, 110, 0.13);
+}
+
+.stat-card::after {
+  transition: transform 0.25s ease;
+}
+
+.stat-card:hover::after {
+  transform: scale(1.16);
+}
+
+.balance-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.balance-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(20, 184, 166, 0.14);
+}
+
+.empty-state svg {
+  opacity: 0.55;
+}
+
+/* Safari support for the frosted surfaces. */
+.announcement-popover {
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.login-card {
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.admin-filter-bar {
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Slim, calm scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(20, 184, 166, 0.35) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.32);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(20, 184, 166, 0.5);
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background-color: rgba(103, 232, 249, 0.28);
+}
+
+/* Visible keyboard focus for the custom button-like elements. */
+.metric:focus-visible,
+.manual-check-url:focus-visible,
+.announcement-list-item:focus-visible {
+  outline: 2px solid rgba(20, 184, 166, 0.6);
+  outline-offset: 2px;
+}
+
+/* Accessibility: respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

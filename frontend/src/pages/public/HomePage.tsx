@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Alert, Button, Input, Modal, Space, Spin, Tag, Tooltip, message } from 'antd';
 import { BellRing, Copy, History, KeyRound, Phone, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { cancelOrder, checkOrder, createOrder, getHistory, getOrder, listPublicAnnouncements, markAnnouncementRead, recordVisit, verifyCard } from '../../api/public';
 import type { Announcement, CardVerifyResult, ReceiveOrder } from '../../types/api';
@@ -35,6 +36,7 @@ function statusText(status?: string, t?: (key: string) => string) {
 
 export function HomePage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [cardCode, setCardCode] = useState(localStorage.getItem('lastCardCode') || '');
   const [verified, setVerified] = useState<CardVerifyResult | null>(null);
   const [orders, setOrders] = useState<ActiveOrderItem[]>(() => {
@@ -57,7 +59,6 @@ export function HomePage() {
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [activeAnnouncement, setActiveAnnouncement] = useState<Announcement | null>(null);
   const [readerId] = useState(getAnnouncementReaderId);
-  const [now, setNow] = useState(Date.now());
   const [msg, contextHolder] = message.useMessage();
 
   useEffect(() => {
@@ -74,11 +75,6 @@ export function HomePage() {
     localStorage.removeItem('activeOrders');
     localStorage.removeItem('activeOrder');
   }, [orders]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const historyQuery = useQuery({
     queryKey: ['history', cardCode],
@@ -183,7 +179,11 @@ export function HomePage() {
             onClose={() => setAnnouncementOpen(false)}
             onOpen={openAnnouncement}
           />
-          <Button href={localStorage.getItem('adminToken') ? '/admin' : '/admin/login'} shape="round" type="text">
+          <Button
+            shape="round"
+            type="text"
+            onClick={() => navigate(localStorage.getItem('adminToken') ? '/admin' : '/admin/login')}
+          >
             {t('admin')}
           </Button>
           <PreferenceBar />
@@ -260,7 +260,6 @@ export function HomePage() {
               <OrderCard
                 key={item.order.orderNo}
                 item={item}
-                now={now}
                 cancelling={cancelMutation.isPending && cancellingOrderNo === item.order.orderNo}
                 onCancel={(orderNo, code) => cancelMutation.mutate({ orderNo, code })}
                 onCopy={copy}
@@ -446,14 +445,12 @@ function hasReceivedPhone(order: ReceiveOrder) {
 
 function OrderCard({
   item,
-  now,
   cancelling,
   onCancel,
   onCopy,
   onUpdate,
 }: {
   item: ActiveOrderItem;
-  now: number;
   cancelling: boolean;
   onCancel: (orderNo: string, cardCode: string) => void;
   onCopy: (value?: string, successKey?: string) => void;
@@ -462,7 +459,7 @@ function OrderCard({
   const { t } = useTranslation();
   const { order, cardCode } = item;
   const phone = formatPhone(order || {});
-  const cancelRemaining = cancelRemainingSeconds(order, now);
+  const cancelRemaining = useCancelCountdown(order);
   const isManual = Boolean(order.manualCheck);
   const canCancel = Boolean(order.status === 'active' && !order.verificationCode && cancelRemaining <= 0 && !isManual);
   const canPoll = Boolean(order.orderNo && cardCode && !finalStatuses.includes(order.status) && !isManual && order.status !== 'completed');
@@ -555,6 +552,21 @@ function cancelRemainingSeconds(order: ReceiveOrder, now: number) {
   if (!order.startedAt) return Math.ceil(cancelWaitMs / 1000);
   const elapsed = now - new Date(order.startedAt).getTime();
   return Math.max(0, Math.ceil((cancelWaitMs - elapsed) / 1000));
+}
+
+/** Ticks once per second only while the countdown is still running, so the rest of the page stays untouched. */
+function useCancelCountdown(order: ReceiveOrder) {
+  const [now, setNow] = useState(() => Date.now());
+  const remaining = cancelRemainingSeconds(order, now);
+  const running = Boolean(order.startedAt) && remaining > 0 && !finalStatuses.includes(order.status) && !order.verificationCode;
+
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+
+  return remaining;
 }
 
 function formatCountdown(seconds: number) {

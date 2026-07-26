@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -83,7 +83,7 @@ import { statusColor } from '../../utils/status';
 import { localizedError } from '../../utils/errors';
 
 const { Header, Sider, Content } = Layout;
-const currencyOptions = ['USD', 'CNY', 'EUR', 'GBP', 'HKD', 'JPY', 'USDT'];
+const currencyOptions = ['USD', 'CNY', 'RUB', 'EUR', 'GBP', 'HKD', 'JPY', 'USDT'];
 
 export function AdminLayout() {
   const token = localStorage.getItem('adminToken');
@@ -92,6 +92,10 @@ export function AdminLayout() {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+
+  useEffect(() => {
+    document.querySelector('.admin-content')?.scrollTo({ top: 0 });
+  }, [location.pathname]);
 
   if (!token) return <Navigate to="/admin/login" replace />;
 
@@ -340,7 +344,12 @@ function AnnouncementsPage() {
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
-  const query = useQuery({ queryKey: ['announcements', keyword, status, notifyMode], queryFn: () => listAnnouncements({ keyword, status, notifyMode, limit: 200 }) });
+  const debouncedKeyword = useDebouncedValue(keyword);
+  const query = useQuery({
+    queryKey: ['announcements', debouncedKeyword, status, notifyMode],
+    queryFn: () => listAnnouncements({ keyword: debouncedKeyword, status, notifyMode, limit: 200 }),
+    placeholderData: keepPreviousData,
+  });
   const saveMutation = useMutation({
     mutationFn: (values: Partial<Announcement>) => editing ? updateAnnouncement(editing.id, values) : createAnnouncement(values),
     onSuccess: () => {
@@ -482,7 +491,7 @@ function ProvidersPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [form] = Form.useForm();
   const query = useQuery({ queryKey: ['providers'], queryFn: listProviders });
-  const rows = filterRows(query.data || [], keyword);
+  const rows = useMemo(() => filterRows(query.data || [], keyword), [query.data, keyword]);
   const mutation = useMutation({
     mutationFn: ({ code, values }: { code: string; values: any }) => updateProvider(code, values),
     onSuccess: () => {
@@ -612,6 +621,14 @@ function ProvidersPage() {
         columns={[
           centerColumn({ title: t('providerCode'), dataIndex: 'code' }),
           centerColumn({ title: t('providerName'), dataIndex: 'name' }),
+          centerColumn({
+            title: t('providerType'),
+            render: (_: unknown, row: SMSProvider) => (
+              <Tag color={isLongLivedSMSProvider(row) ? 'cyan' : 'blue'}>
+                {t(isLongLivedSMSProvider(row) ? 'longLivedProvider' : 'shortLivedProvider')}
+              </Tag>
+            ),
+          }),
           centerColumn({ title: t('baseUrl'), dataIndex: 'baseUrl', width: 260 }),
           centerColumn({ title: t('currencyCode'), dataIndex: 'currencyCode' }),
           centerColumn({ title: t('apiKey'), dataIndex: 'apiKeySet', render: (value: boolean) => <Tag color={value ? 'green' : 'orange'}>{value ? t('configured') : t('notConfigured')}</Tag> }),
@@ -724,7 +741,7 @@ function ServicesPage() {
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
   const currencyByProvider = providerCurrencyMap(providers.data || []);
   const selectedProvider = (providers.data || []).find((item) => item.code === providerCode);
-  const isLongLivedProvider = Boolean(selectedProvider?.manualCheck || selectedProvider?.providerKind === 'long_lived' || providerCode === '68sms');
+  const isLongLivedProvider = isLongLivedSMSProvider(selectedProvider, providerCode);
   const countries = useQuery({
     queryKey: ['provider-countries', providerCode],
     queryFn: () => listProviderCountries(providerCode),
@@ -771,7 +788,7 @@ function ServicesPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['service-configs'] }),
     onError: (error: Error) => message.error(localizedError(error.message, t)),
   });
-  const rows = filterRows(query.data || [], keyword);
+  const rows = useMemo(() => filterRows(query.data || [], keyword), [query.data, keyword]);
 
   const openCreate = () => {
     setEditing(null);
@@ -783,7 +800,7 @@ function ServicesPage() {
   const openEdit = (record: any) => {
     setEditing(record);
     const provider = (providers.data || []).find((item) => item.code === record.providerCode);
-    const longLived = Boolean(provider?.manualCheck || provider?.providerKind === 'long_lived' || record.providerCode === '68sms');
+    const longLived = isLongLivedSMSProvider(provider, record.providerCode);
     form.setFieldsValue({ ...record, timeoutSeconds: longLived ? 0 : record.timeoutSeconds, validityType: serviceConfigValidityType(record.metadata) });
     setOpen(true);
   };
@@ -883,10 +900,10 @@ function ServicesPage() {
         >
           <Form.Item name="providerCode" label={t('provider')} rules={[{ required: true }]}>
             <Select
-              options={(providers.data || []).map((item) => ({ label: item.name, value: item.code }))}
+              options={providerGroupOptions(providers.data || [], t)}
               onChange={(value) => {
                 const provider = (providers.data || []).find((item) => item.code === value);
-                const nextLongLived = Boolean(provider?.manualCheck || provider?.providerKind === 'long_lived' || value === '68sms');
+                const nextLongLived = isLongLivedSMSProvider(provider, value);
                 form.setFieldsValue({
                   providerCode: value,
                   providerCountryId: undefined,
@@ -1007,13 +1024,13 @@ function BatchesPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['card-batches'] }),
     onError: (error: Error) => message.error(localizedError(error.message, t)),
   });
-  const rows = filterRows(
+  const rows = useMemo(() => filterRows(
     (batches.data || []).map((row: any) => ({
       ...row,
       serviceKey: serviceKeyById(services.data || [], row.serviceConfigId),
     })),
     keyword,
-  );
+  ), [batches.data, services.data, keyword]);
 
   return (
     <div className="admin-page">
@@ -1105,7 +1122,7 @@ function CardsPage() {
     },
     onError: (error: Error) => msg.error(localizedError(error.message, t)),
   });
-  const rows = filterRows(query.data || [], keyword);
+  const rows = useMemo(() => filterRows(query.data || [], keyword), [query.data, keyword]);
   return (
     <div className="admin-page">
       {contextHolder}
@@ -1162,7 +1179,7 @@ function OrdersPage() {
   const [keyword, setKeyword] = useState('');
   const query = useQuery({ queryKey: ['orders'], queryFn: listOrders, refetchInterval: 8000 });
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
-  const rows = filterRows(query.data || [], keyword);
+  const rows = useMemo(() => filterRows(query.data || [], keyword), [query.data, keyword]);
   const currencyByProvider = providerCurrencyMap(providers.data || []);
   return (
     <div className="admin-page">
@@ -1195,7 +1212,7 @@ function AuditPage() {
   const { t } = useTranslation();
   const [keyword, setKeyword] = useState('');
   const query = useQuery({ queryKey: ['audit-logs'], queryFn: listAuditLogs });
-  const rows = filterRows(query.data || [], keyword);
+  const rows = useMemo(() => filterRows(query.data || [], keyword), [query.data, keyword]);
   return (
     <div className="admin-page">
       <PageHead title={t('auditLogs')} searchValue={keyword} onSearchChange={setKeyword} onRefresh={() => query.refetch()} />
@@ -1614,6 +1631,15 @@ function truncateText(value: string, maxLength: number) {
   return `${value.slice(0, maxLength - 1)}...`;
 }
 
+function useDebouncedValue<T>(value: T, delay = 250) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 function centerColumn(column: any) {
   return { align: 'center' as const, ...column };
 }
@@ -1651,7 +1677,7 @@ function countryLabel(item: ProviderCountry) {
 function serviceLabel(item: ProviderService) {
   const parts = [item.name];
   if (item.providerServiceId) parts.push(item.providerServiceId);
-  return parts.join(' 璺?');
+  return parts.join(' · ');
 }
 
 function serviceConfigValidityType(metadata: unknown) {
@@ -1681,6 +1707,24 @@ function providerCurrencyMap(providers: SMSProvider[]) {
     result[provider.code] = provider.currencyCode || 'USD';
     return result;
   }, {});
+}
+
+function isLongLivedSMSProvider(provider?: SMSProvider, fallbackCode?: string) {
+  const code = provider?.code || fallbackCode;
+  return Boolean(provider?.manualCheck || provider?.providerKind === 'long_lived' || code === '68sms' || code === '62-us');
+}
+
+function providerGroupOptions(providers: SMSProvider[], t: (key: string, options?: any) => string) {
+  const shortLived = providers
+    .filter((provider) => !isLongLivedSMSProvider(provider))
+    .map((provider) => ({ label: provider.name, value: provider.code }));
+  const longLived = providers
+    .filter((provider) => isLongLivedSMSProvider(provider))
+    .map((provider) => ({ label: provider.name, value: provider.code }));
+  return [
+    { label: t('shortLivedProviders'), options: shortLived },
+    { label: t('longLivedProviders'), options: longLived },
+  ].filter((group) => group.options.length > 0);
 }
 
 function formatMoney(value?: string | number | null, currency = 'USD') {

@@ -1,13 +1,22 @@
-import { ConfigProvider, theme as antdTheme } from 'antd';
+import { ConfigProvider, Spin, theme as antdTheme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PreferencesProvider, usePreferences } from './preferences';
 import { HomePage } from '../pages/public/HomePage';
-import { AdminLoginPage } from '../pages/admin/AdminLoginPage';
-import { AdminLayout } from '../pages/admin/AdminLayout';
+
+const AdminLoginPage = lazy(() => import('../pages/admin/AdminLoginPage').then((module) => ({ default: module.AdminLoginPage })));
+const AdminLayout = lazy(() => import('../pages/admin/AdminLayout').then((module) => ({ default: module.AdminLayout })));
+
+function RouteFallback() {
+  return (
+    <div className="route-fallback">
+      <Spin size="large" />
+    </div>
+  );
+}
 
 function Shell() {
   const { theme } = usePreferences();
@@ -30,11 +39,13 @@ function Shell() {
       }}
     >
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/admin/login" element={<AdminLoginPage />} />
-          <Route path="/admin/*" element={<AdminLayout />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/admin/login" element={<AdminLoginPage />} />
+            <Route path="/admin/*" element={<AdminLayout />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </ConfigProvider>
   );
