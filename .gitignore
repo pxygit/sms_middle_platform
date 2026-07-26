@@ -45,3 +45,7 @@ storage/
 deploy/.env
 deploy/data/
 deploy/backups/
+deploy/native/.env
+deploy/native/bin/
+deploy/native/storage/
+deploy/native/sunnysms.pid

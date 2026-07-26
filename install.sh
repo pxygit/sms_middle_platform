@@ -56,16 +56,39 @@ check_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required but not installed. Install it first and rerun this script."
 }
 
+docker_install_hint() {
+  cat >&2 <<'EOF'
+
+[SunnySMS] Docker 未安装。Ubuntu 24.04 可执行以下命令安装（官方脚本，含 Compose v2 插件）:
+
+    curl -fsSL https://get.docker.com | sudo sh
+    sudo systemctl enable --now docker
+    sudo usermod -aG docker "$USER" && newgrp docker
+
+安装完成后重新运行 ./install.sh
+EOF
+}
+
 check_docker() {
-  check_command docker
-  docker info >/dev/null 2>&1 || fail "Docker is installed but not running, or current user cannot access Docker."
+  if ! command -v docker >/dev/null 2>&1; then
+    docker_install_hint
+    fail "Docker is required but not installed."
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    warn "无法访问 Docker 守护进程。请尝试: sudo systemctl enable --now docker"
+    warn "若为权限问题: sudo usermod -aG docker \"\$USER\" && newgrp docker"
+    fail "Docker is installed but not running, or current user cannot access Docker."
+  fi
   local docker_version docker_major compose_version compose_major
   docker_version="$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)"
   docker_major="$(version_major "$docker_version")"
   if [ "${docker_major:-0}" -lt "$REQUIRED_DOCKER_MAJOR" ]; then
     fail "Docker ${REQUIRED_DOCKER_MAJOR}.x or newer is required. Current: ${docker_version:-unknown}."
   fi
-  docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 plugin is required. Install docker compose and rerun this script."
+  if ! docker compose version >/dev/null 2>&1; then
+    warn "缺少 Docker Compose v2 插件。Ubuntu 24.04 可执行: sudo apt-get update && sudo apt-get install -y docker-compose-plugin"
+    fail "Docker Compose v2 plugin is required. Install docker compose and rerun this script."
+  fi
   compose_version="$(docker compose version --short 2>/dev/null || docker compose version | awk '{print $NF}')"
   compose_major="$(version_major "$compose_version")"
   if [ "${compose_major:-0}" -lt "$REQUIRED_COMPOSE_MAJOR" ]; then

@@ -45,6 +45,7 @@ type Config struct {
 	OrderPollInterval    time.Duration
 	OrderTimeout         time.Duration
 	CardExportDir        string
+	StaticDir            string
 }
 
 func Load() Config {
@@ -87,6 +88,7 @@ func Load() Config {
 		OrderPollInterval:    time.Duration(getEnvInt("ORDER_POLL_INTERVAL_SECONDS", 8)) * time.Second,
 		OrderTimeout:         time.Duration(getEnvInt("ORDER_TIMEOUT_SECONDS", 1200)) * time.Second,
 		CardExportDir:        getEnv("CARD_EXPORT_DIR", "storage/card_exports"),
+		StaticDir:            getEnv("STATIC_DIR", ""),
 	}
 }
 

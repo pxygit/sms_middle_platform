@@ -1,6 +1,11 @@
 package router
 
 import (
+	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"sms-middle-platform/backend/internal/config"
@@ -106,5 +111,48 @@ func New(cfg config.Config, services Services) *gin.Engine {
 		protected.DELETE("/announcements/:id", announcementHandler.Delete)
 	}
 
+	registerStatic(r, cfg.StaticDir)
+
 	return r
+}
+
+// registerStatic serves the built frontend (SPA) directly from the API process
+// when STATIC_DIR is set, so native deployments do not need a separate nginx.
+func registerStatic(r *gin.Engine, staticDir string) {
+	if staticDir == "" {
+		return
+	}
+	root, err := filepath.Abs(staticDir)
+	if err != nil {
+		return
+	}
+	indexFile := filepath.Join(root, "index.html")
+
+	r.NoRoute(func(c *gin.Context) {
+		requestPath := c.Request.URL.Path
+		if strings.HasPrefix(requestPath, "/api/") || requestPath == "/api" {
+			c.JSON(http.StatusNotFound, gin.H{"code": http.StatusNotFound, "message": "not found"})
+			return
+		}
+		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+			c.JSON(http.StatusNotFound, gin.H{"code": http.StatusNotFound, "message": "not found"})
+			return
+		}
+
+		candidate := filepath.Join(root, filepath.FromSlash(path.Clean("/"+requestPath)))
+		if strings.HasPrefix(candidate, root) {
+			if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
+				if strings.HasPrefix(requestPath, "/assets/") {
+					// Vite emits content-hashed asset filenames; cache them aggressively.
+					c.Header("Cache-Control", "public, max-age=31536000, immutable")
+				}
+				c.File(candidate)
+				return
+			}
+		}
+
+		// SPA fallback: unknown paths render the frontend router.
+		c.Header("Cache-Control", "no-cache")
+		c.File(indexFile)
+	})
 }

@@ -107,3 +107,55 @@ set +a
 - The API service is not exposed directly to the host; Nginx proxies it internally.
 - `deploy/.env` and `deploy/data/` should never be committed.
 - If you put SunnySMS behind a reverse proxy, point the proxy to `http://127.0.0.1:${SUNNYSMS_HTTP_PORT}`.
+
+## Native Deployment (No Docker) / 原生部署
+
+If you prefer running without Docker, use the scripts under `deploy/native/`.
+Both scripts verify the environment first and abort with copy-paste install
+commands when something is missing (Go >= 1.25, Node.js >= 20.19, PostgreSQL).
+The Go binary serves both the API and the built frontend (`STATIC_DIR`), so no
+Nginx is required.
+
+### Linux (Ubuntu 24.04 tested)
+
+```bash
+chmod +x deploy/native/install-native-linux.sh
+./deploy/native/install-native-linux.sh
+```
+
+What it does:
+
+1. Checks Go / Node.js / npm / PostgreSQL / basic tools; aborts with Ubuntu
+   24.04 install commands if anything is missing.
+2. Creates the `sunnysms` database and role idempotently (local PostgreSQL via
+   `sudo -u postgres`), or reuses `DATABASE_DSN` from an existing
+   `deploy/native/.env`.
+3. Generates `deploy/native/.env` with random DB password, JWT secret, data
+   encryption key, and admin password.
+4. Builds the frontend (`npm ci && npm run build`) and the backend binary.
+5. Installs and starts a `sunnysms` systemd service
+   (`sudo systemctl {status|restart|stop} sunnysms`,
+   logs via `sudo journalctl -u sunnysms -f`).
+6. Waits for `/health`, prints the URL and admin credential location, and
+   reminds you to open the port if UFW is active.
+
+Re-running the script rebuilds and restarts the service while keeping
+`deploy/native/.env`.
+
+### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\native\install-native-windows.ps1
+```
+
+The script checks Go / Node.js / PostgreSQL (with `winget` install hints),
+prompts once for the local `postgres` superuser password to create the
+application database, generates `deploy/native/.env`, builds both ends, starts
+`sunnysms-api.exe` (minimized window), and waits for `/health`.
+Stop it with `Stop-Process -Name sunnysms-api`; re-run the script to redeploy.
+
+### Native deployment files
+
+- `deploy/native/.env`: generated runtime configuration; never commit it.
+- `deploy/native/bin/`: compiled backend binary.
+- `deploy/native/storage/`: card export storage for native mode.
