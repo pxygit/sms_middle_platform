@@ -8,6 +8,7 @@ import (
 
 	"sms-middle-platform/backend/internal/adapter/sms"
 	"sms-middle-platform/backend/internal/adapter/sms/firefox"
+	"sms-middle-platform/backend/internal/adapter/sms/fivesim"
 	"sms-middle-platform/backend/internal/adapter/sms/herosms"
 	"sms-middle-platform/backend/internal/adapter/sms/lubansms"
 	"sms-middle-platform/backend/internal/adapter/sms/sms62us"
@@ -40,6 +41,7 @@ func main() {
 	registry.Register(firefox.New(cfg.FirefoxAPIKey, cfg.FirefoxBaseURL, cfg.FirefoxTimeout, supplierLogs.Record))
 	registry.Register(herosms.New(cfg.HeroSMSAPIKey, cfg.HeroSMSBaseURL, cfg.HeroSMSTimeout, supplierLogs.Record))
 	registry.Register(smsbower.New(cfg.SMSBowerAPIKey, cfg.SMSBowerBaseURL, cfg.SMSBowerTimeout, supplierLogs.Record))
+	registry.Register(fivesim.New(cfg.FiveSimAPIKey, cfg.FiveSimBaseURL, cfg.FiveSimTimeout, supplierLogs.Record))
 	registry.Register(lubansms.New(cfg.LubanSMSAPIKey, cfg.LubanSMSBaseURL, cfg.LubanSMSTimeout, supplierLogs.Record))
 	registry.Register(sms68.New(cfg.SMS68APIKey, cfg.SMS68BaseURL, cfg.SMS68MetadataToken, cfg.SMS68Timeout, supplierLogs.Record))
 	registry.Register(sms62us.New(cfg.SMS62USAPIKey, cfg.SMS62USBaseURL, cfg.SMS62USTimeout, supplierLogs.Record))

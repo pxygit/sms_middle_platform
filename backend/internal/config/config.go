@@ -29,6 +29,9 @@ type Config struct {
 	SMSBowerAPIKey       string
 	SMSBowerBaseURL      string
 	SMSBowerTimeout      time.Duration
+	FiveSimAPIKey        string
+	FiveSimBaseURL       string
+	FiveSimTimeout       time.Duration
 	LubanSMSAPIKey       string
 	LubanSMSBaseURL      string
 	LubanSMSTimeout      time.Duration
@@ -68,6 +71,9 @@ func Load() Config {
 		SMSBowerAPIKey:       getEnv("SMSBOWER_API_KEY", ""),
 		SMSBowerBaseURL:      getEnv("SMSBOWER_BASE_URL", "https://smsbower.page"),
 		SMSBowerTimeout:      time.Duration(getEnvInt("SMSBOWER_TIMEOUT_SECONDS", 15)) * time.Second,
+		FiveSimAPIKey:        getEnv("FIVESIM_API_KEY", ""),
+		FiveSimBaseURL:       getEnv("FIVESIM_BASE_URL", "https://5sim.net"),
+		FiveSimTimeout:       time.Duration(getEnvInt("FIVESIM_TIMEOUT_SECONDS", 15)) * time.Second,
 		LubanSMSAPIKey:       getEnv("LUBANSMS_API_KEY", ""),
 		LubanSMSBaseURL:      getEnv("LUBANSMS_BASE_URL", "https://lubansms.com"),
 		LubanSMSTimeout:      time.Duration(getEnvInt("LUBANSMS_TIMEOUT_SECONDS", 15)) * time.Second,

@@ -107,6 +107,15 @@ func SeedDefaults(db *gorm.DB, cfg config.Config) error {
 		return err
 	}
 	if err := seedProvider(db, cfg.DataEncryptionKey, providerSeed{
+		Code:         "5sim",
+		Name:         "5sim",
+		BaseURL:      cfg.FiveSimBaseURL,
+		CurrencyCode: "RUB",
+		APIKey:       cfg.FiveSimAPIKey,
+	}); err != nil {
+		return err
+	}
+	if err := seedProvider(db, cfg.DataEncryptionKey, providerSeed{
 		Code:         "lubansms",
 		Name:         "LubanSMS",
 		BaseURL:      cfg.LubanSMSBaseURL,
