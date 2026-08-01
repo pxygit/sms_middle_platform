@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { login } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
+import { setLocalStorageItem } from '../../utils/storage';
 
 export function AdminLoginPage() {
   const navigate = useNavigate();
@@ -15,8 +16,8 @@ export function AdminLoginPage() {
   const mutation = useMutation({
     mutationFn: (values: { username: string; password: string }) => login(values.username, values.password),
     onSuccess: (data) => {
-      localStorage.setItem('adminToken', data.token);
-      localStorage.setItem('adminUser', JSON.stringify(data.admin));
+      setLocalStorageItem('adminToken', data.token);
+      setLocalStorageItem('adminUser', JSON.stringify(data.admin));
       navigate(searchParams.get('redirect') || '/admin', { replace: true });
     },
     onError: (error: Error) => msg.error(error.message),

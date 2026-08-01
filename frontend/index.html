@@ -10,6 +10,50 @@
     <script>
       (function () {
         try {
+          var metadataKey = '__smsStorageUpdatedAt';
+          var ttl = 7 * 24 * 60 * 60 * 1000;
+          var now = Date.now();
+          var managedKeys = ['theme', 'language', 'lastCardCode', 'activeOrders', 'activeOrder', 'announcementReaderId', 'adminToken', 'adminUser'];
+          var metadata = {};
+          try {
+            metadata = JSON.parse(localStorage.getItem(metadataKey) || '{}');
+          } catch (error) {
+            metadata = {};
+          }
+
+          function registerManagedKey(key) {
+            var value = localStorage.getItem(key);
+            if (value !== null) {
+              try {
+                var wrapped = JSON.parse(value);
+                if (wrapped.__smsStorageVersion === 1 && typeof wrapped.value === 'string' && typeof wrapped.updatedAt === 'number') {
+                  value = wrapped.value;
+                  metadata[key] = wrapped.updatedAt;
+                  localStorage.setItem(key, value);
+                }
+              } catch (error) {
+                /* Plain and application JSON values are already in the current format. */
+              }
+            }
+            if (value !== null && typeof metadata[key] !== 'number') metadata[key] = now;
+          }
+          managedKeys.forEach(registerManagedKey);
+          for (var index = 0; index < localStorage.length; index += 1) {
+            var key = localStorage.key(index);
+            if (key && key.indexOf('announcementModalSeen:') === 0) registerManagedKey(key);
+          }
+          Object.keys(metadata).forEach(function (key) {
+            if (localStorage.getItem(key) === null || typeof metadata[key] !== 'number' || now - metadata[key] >= ttl) {
+              localStorage.removeItem(key);
+              delete metadata[key];
+            }
+          });
+          if (Object.keys(metadata).length > 0) {
+            localStorage.setItem(metadataKey, JSON.stringify(metadata));
+          } else {
+            localStorage.removeItem(metadataKey);
+          }
+
           var theme = localStorage.getItem('theme');
           if (theme !== 'light' && theme !== 'dark') {
             theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';

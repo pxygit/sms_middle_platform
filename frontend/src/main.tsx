@@ -2,8 +2,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './app/App';
+import { purgeExpiredLocalStorageItems } from './utils/storage';
 import './i18n';
 import './styles.css';
+
+purgeExpiredLocalStorageItems();
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { getLocalStorageItem, setLocalStorageItem } from '../utils/storage';
 
 type Theme = 'light' | 'dark';
 
@@ -10,7 +11,7 @@ interface Preferences {
 const PreferencesContext = createContext<Preferences | null>(null);
 
 function initialTheme(): Theme {
-  const stored = localStorage.getItem('theme');
+  const stored = getLocalStorageItem('theme');
   if (stored === 'light' || stored === 'dark') return stored;
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
@@ -19,7 +20,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   const [theme, setThemeState] = useState<Theme>(initialTheme);
 
   const setTheme = (next: Theme) => {
-    localStorage.setItem('theme', next);
+    setLocalStorageItem('theme', next);
     setThemeState(next);
   };
 

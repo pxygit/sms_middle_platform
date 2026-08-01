@@ -2,13 +2,14 @@ import { Button, Segmented, Space } from 'antd';
 import { Languages, Moon, Sun } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePreferences } from '../app/preferences';
+import { setLocalStorageItem } from '../utils/storage';
 
 export function PreferenceBar({ compact = false }: { compact?: boolean }) {
   const { theme, setTheme } = usePreferences();
   const { i18n, t } = useTranslation();
 
   const changeLanguage = (language: string) => {
-    localStorage.setItem('language', language);
+    setLocalStorageItem('language', language);
     void i18n.changeLanguage(language);
   };
 

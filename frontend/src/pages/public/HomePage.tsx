@@ -11,6 +11,7 @@ import { localizedError } from '../../utils/errors';
 import { formatDateTime } from '../../utils/format';
 import { formatPhone } from '../../utils/phone';
 import { statusColor } from '../../utils/status';
+import { getLocalStorageItem, removeLocalStorageItem, setLocalStorageItem } from '../../utils/storage';
 
 const finalStatuses = ['sms_received', 'cancelled', 'expired', 'failed'];
 const cancelWaitMs = 120000;
@@ -37,10 +38,10 @@ function statusText(status?: string, t?: (key: string) => string) {
 export function HomePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [cardCode, setCardCode] = useState(localStorage.getItem('lastCardCode') || '');
+  const [cardCode, setCardCode] = useState(getLocalStorageItem('lastCardCode') || '');
   const [verified, setVerified] = useState<CardVerifyResult | null>(null);
   const [orders, setOrders] = useState<ActiveOrderItem[]>(() => {
-    const stored = localStorage.getItem('activeOrders') || localStorage.getItem('activeOrder');
+    const stored = getLocalStorageItem('activeOrders') || getLocalStorageItem('activeOrder');
     if (!stored) return [];
     try {
       const parsed = JSON.parse(stored);
@@ -50,7 +51,7 @@ export function HomePage() {
       if (parsed?.order && parsed?.cardCode) {
         return finalStatuses.includes(parsed.order.status) ? [] : [parsed];
       }
-      return finalStatuses.includes(parsed.status) ? [] : [{ cardCode: localStorage.getItem('lastCardCode') || '', order: parsed }];
+      return finalStatuses.includes(parsed.status) ? [] : [{ cardCode: getLocalStorageItem('lastCardCode') || '', order: parsed }];
     } catch {
       return [];
     }
@@ -68,12 +69,12 @@ export function HomePage() {
   useEffect(() => {
     const active = orders.filter((item) => !finalStatuses.includes(item.order.status));
     if (active.length > 0) {
-      localStorage.setItem('activeOrders', JSON.stringify(active));
-      localStorage.removeItem('activeOrder');
+      setLocalStorageItem('activeOrders', JSON.stringify(active));
+      removeLocalStorageItem('activeOrder');
       return;
     }
-    localStorage.removeItem('activeOrders');
-    localStorage.removeItem('activeOrder');
+    removeLocalStorageItem('activeOrders');
+    removeLocalStorageItem('activeOrder');
   }, [orders]);
 
   const historyQuery = useQuery({
@@ -93,9 +94,9 @@ export function HomePage() {
 
   useEffect(() => {
     const items = announcementsQuery.data || [];
-    const modalAnnouncement = items.find((item) => item.notifyMode === 'modal' && item.unread && !localStorage.getItem(`announcementModalSeen:${item.id}`));
+    const modalAnnouncement = items.find((item) => item.notifyMode === 'modal' && item.unread && !getLocalStorageItem(`announcementModalSeen:${item.id}`));
     if (modalAnnouncement) {
-      localStorage.setItem(`announcementModalSeen:${modalAnnouncement.id}`, '1');
+      setLocalStorageItem(`announcementModalSeen:${modalAnnouncement.id}`, '1');
       setActiveAnnouncement(modalAnnouncement);
     }
   }, [announcementsQuery.data]);
@@ -110,7 +111,7 @@ export function HomePage() {
   const verifyMutation = useMutation({
     mutationFn: verifyCard,
     onSuccess: (data) => {
-      localStorage.setItem('lastCardCode', cardCode);
+      setLocalStorageItem('lastCardCode', cardCode);
       setVerified(data);
       msg.success(t('verify'));
     },
@@ -120,7 +121,7 @@ export function HomePage() {
   const createMutation = useMutation({
     mutationFn: createOrder,
     onSuccess: (data) => {
-      localStorage.setItem('lastCardCode', cardCode);
+      setLocalStorageItem('lastCardCode', cardCode);
       setOrders((current) => [{ cardCode, order: data }, ...current.filter((item) => item.order.orderNo !== data.orderNo)]);
       msg.success(t('requestNumber'));
     },
@@ -182,7 +183,7 @@ export function HomePage() {
           <Button
             shape="round"
             type="text"
-            onClick={() => navigate(localStorage.getItem('adminToken') ? '/admin' : '/admin/login')}
+            onClick={() => navigate(getLocalStorageItem('adminToken') ? '/admin' : '/admin/login')}
           >
             {t('admin')}
           </Button>
@@ -428,10 +429,10 @@ function safeMarkdownHref(value: string) {
 
 function getAnnouncementReaderId() {
   const key = 'announcementReaderId';
-  const existing = localStorage.getItem(key);
+  const existing = getLocalStorageItem(key);
   if (existing) return existing;
   const value = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  localStorage.setItem(key, value);
+  setLocalStorageItem(key, value);
   return value;
 }
 function PublicFooter() {

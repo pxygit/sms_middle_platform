@@ -1,12 +1,13 @@
 import axios from 'axios';
 import type { ApiResponse } from '../types/api';
+import { getLocalStorageItem, removeLocalStorageItem } from '../utils/storage';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('adminToken');
+  const token = getLocalStorageItem('adminToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -23,8 +24,8 @@ api.interceptors.response.use(
     const isAdminPage = window.location.pathname.startsWith('/admin');
 
     if (status === 401 && !isLoginRequest && (isAdminRequest || isAdminPage)) {
-      localStorage.removeItem('adminToken');
-      localStorage.removeItem('adminUser');
+      removeLocalStorageItem('adminToken');
+      removeLocalStorageItem('adminUser');
 
       if (window.location.pathname !== '/admin/login') {
         const current = `${window.location.pathname}${window.location.search}`;
