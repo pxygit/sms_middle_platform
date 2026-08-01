@@ -35,7 +35,8 @@ input {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  overflow-x: clip;
+  min-height: 100dvh;
+  overflow: clip;
   padding: 24px clamp(18px, 4vw, 52px) 22px;
   background:
     radial-gradient(circle at 18% 15%, rgba(20, 184, 166, 0.24), transparent 28%),
