@@ -34,27 +34,35 @@ export function updateProvider(provider: string, payload: Partial<SMSProvider> &
   return unwrap<SMSProvider>(api.patch(`/admin/providers/${provider}`, payload));
 }
 
-export function listProviderCountries(provider: string) {
-  return unwrap<ProviderCountry[]>(api.get(`/admin/providers/${provider}/countries`));
+export function listProviderCountries(provider: string, simType?: string) {
+  return unwrap<ProviderCountry[]>(api.get(`/admin/providers/${provider}/countries`, { params: { simType } }));
 }
 
-export function listProviderServices(provider: string, countryId?: string) {
-  return unwrap<ProviderService[]>(api.get(`/admin/providers/${provider}/services`, { params: { countryId } }));
+export function refreshProviderCountries(provider: string, simType?: string) {
+  return unwrap<ProviderCountry[]>(api.post(`/admin/providers/${provider}/countries/sync`, undefined, { params: { simType } }));
 }
 
-export function getProviderPrice(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
+export function listProviderServices(provider: string, countryId?: string, simType?: string) {
+  return unwrap<ProviderService[]>(api.get(`/admin/providers/${provider}/services`, { params: { countryId, simType } }));
+}
+
+export function refreshProviderServices(provider: string, countryId?: string, simType?: string) {
+  return unwrap<ProviderService[]>(api.post(`/admin/providers/${provider}/services/sync`, undefined, { params: { countryId, simType } }));
+}
+
+export function getProviderPrice(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string; simType?: string }) {
   return unwrap<ProviderPrice>(api.get(`/admin/providers/${provider}/price`, { params }));
 }
 
-export function getProviderStock(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
+export function getProviderStock(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string; simType?: string }) {
   return unwrap<ProviderStock>(api.get(`/admin/providers/${provider}/stock`, { params }));
 }
 
-export function getProviderQuote(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
+export function getProviderQuote(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string; simType?: string }) {
   return unwrap<ProviderQuote>(api.get(`/admin/providers/${provider}/quote`, { params }));
 }
 
-export function getProviderValidityOptions(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string }) {
+export function getProviderValidityOptions(provider: string, params: { countryId?: string; serviceId?: string; poolId?: string; simType?: string }) {
   return unwrap<ProviderValidityOption[]>(api.get(`/admin/providers/${provider}/validity-options`, { params }));
 }
 

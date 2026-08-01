@@ -69,6 +69,7 @@ type ProviderCountry struct {
 	ShortName string `json:"shortName"`
 	Region    string `json:"region"`
 	DialCode  string `json:"dialCode,omitempty"`
+	SIMType   string `json:"simType,omitempty"`
 }
 
 type ProviderService struct {
@@ -81,12 +82,18 @@ type ProviderService struct {
 	CountryName string `json:"countryName,omitempty"`
 	Price       string `json:"price,omitempty"`
 	Stock       int    `json:"stock,omitempty"`
+	SIMType     string `json:"simType,omitempty"`
+}
+
+type MetadataScope struct {
+	SIMType string `json:"simType,omitempty"`
 }
 
 type ProviderPriceInput struct {
 	CountryID string
 	ServiceID string
 	PoolID    string
+	SIMType   string
 }
 
 type ProviderPrice struct {
@@ -102,6 +109,7 @@ type ProviderStockInput struct {
 	CountryID string
 	ServiceID string
 	PoolID    string
+	SIMType   string
 }
 
 type ProviderStock struct {
@@ -118,6 +126,7 @@ type ValidityOptionsInput struct {
 	CountryID string
 	ServiceID string
 	PoolID    string
+	SIMType   string
 }
 
 type ProviderValidityOption struct {
@@ -153,6 +162,14 @@ type MetadataProvider interface {
 	GetServices(ctx context.Context, countryID string) ([]ProviderService, error)
 	GetPrice(ctx context.Context, input ProviderPriceInput) (*ProviderPrice, error)
 	GetStock(ctx context.Context, input ProviderStockInput) (*ProviderStock, error)
+}
+
+// ScopedMetadataProvider is implemented by providers whose country and service
+// catalogs vary by an additional dimension, such as 68SMS physical SIM type.
+type ScopedMetadataProvider interface {
+	MetadataScopes() []MetadataScope
+	GetCountriesWithScope(ctx context.Context, scope MetadataScope) ([]ProviderCountry, error)
+	GetServicesWithScope(ctx context.Context, countryID string, scope MetadataScope) ([]ProviderService, error)
 }
 
 type CatalogProvider interface {

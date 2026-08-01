@@ -133,7 +133,7 @@ func (h *CatalogHandler) DeleteServiceConfig(c *gin.Context) {
 }
 
 func (h *CatalogHandler) ProviderCountries(c *gin.Context) {
-	countries, err := h.meta.Countries(c.Request.Context(), c.Param("provider"))
+	countries, err := h.meta.Countries(c.Request.Context(), c.Param("provider"), c.Query("simType"))
 	if err != nil {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -141,12 +141,52 @@ func (h *CatalogHandler) ProviderCountries(c *gin.Context) {
 	response.OK(c, countries)
 }
 
-func (h *CatalogHandler) ProviderServices(c *gin.Context) {
-	services, err := h.meta.Services(c.Request.Context(), c.Param("provider"), c.Query("countryId"))
+func (h *CatalogHandler) SyncProviderCountries(c *gin.Context) {
+	providerCode := c.Param("provider")
+	simType := c.Query("simType")
+	if err := h.meta.SyncProviderCountries(c.Request.Context(), providerCode, simType); err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	countries, err := h.meta.Countries(c.Request.Context(), providerCode, simType)
 	if err != nil {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	h.audit.Record("admin", adminID(c), "provider.countries_sync", "provider", providerCode, c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"simType": simType,
+		"count":   len(countries),
+	})
+	response.OK(c, countries)
+}
+
+func (h *CatalogHandler) ProviderServices(c *gin.Context) {
+	services, err := h.meta.Services(c.Request.Context(), c.Param("provider"), c.Query("countryId"), c.Query("simType"))
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	response.OK(c, services)
+}
+
+func (h *CatalogHandler) SyncProviderServices(c *gin.Context) {
+	providerCode := c.Param("provider")
+	countryID := c.Query("countryId")
+	simType := c.Query("simType")
+	if err := h.meta.SyncProviderCountry(c.Request.Context(), providerCode, countryID, simType); err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	services, err := h.meta.Services(c.Request.Context(), providerCode, countryID, simType)
+	if err != nil {
+		response.Error(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	h.audit.Record("admin", adminID(c), "provider.services_sync", "provider", providerCode, c.ClientIP(), c.Request.UserAgent(), gin.H{
+		"countryId": countryID,
+		"simType":   simType,
+		"count":     len(services),
+	})
 	response.OK(c, services)
 }
 
@@ -155,6 +195,7 @@ func (h *CatalogHandler) ProviderPrice(c *gin.Context) {
 		CountryID: c.Query("countryId"),
 		ServiceID: c.Query("serviceId"),
 		PoolID:    c.Query("poolId"),
+		SIMType:   c.Query("simType"),
 	})
 	if err != nil {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
@@ -168,6 +209,7 @@ func (h *CatalogHandler) ProviderStock(c *gin.Context) {
 		CountryID: c.Query("countryId"),
 		ServiceID: c.Query("serviceId"),
 		PoolID:    c.Query("poolId"),
+		SIMType:   c.Query("simType"),
 	})
 	if err != nil {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
@@ -181,6 +223,7 @@ func (h *CatalogHandler) ProviderValidityOptions(c *gin.Context) {
 		CountryID: c.Query("countryId"),
 		ServiceID: c.Query("serviceId"),
 		PoolID:    c.Query("poolId"),
+		SIMType:   c.Query("simType"),
 	})
 	if err != nil {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())
@@ -193,6 +236,7 @@ func (h *CatalogHandler) ProviderQuote(c *gin.Context) {
 		CountryID: c.Query("countryId"),
 		ServiceID: c.Query("serviceId"),
 		PoolID:    c.Query("poolId"),
+		SIMType:   c.Query("simType"),
 	})
 	if err != nil {
 		response.Error(c, http.StatusUnprocessableEntity, err.Error())

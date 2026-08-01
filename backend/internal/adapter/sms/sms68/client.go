@@ -23,6 +23,9 @@ const providerCode = "68sms"
 const (
 	countryCanada = "33"
 	countryUS     = "188"
+	countryUK     = "187"
+	simVirtual    = "1"
+	simPhysical   = "2"
 )
 
 type Client struct {
@@ -103,6 +106,7 @@ type activityRule struct {
 
 type serviceConfigMetadata struct {
 	ValidityType string `json:"validityType"`
+	SIMType      string `json:"simType"`
 }
 type loginCredential struct {
 	Token         string
@@ -182,6 +186,7 @@ func (c *Client) RequestNumber(ctx context.Context, input sms.RequestNumberInput
 	}
 
 	operator := defaultOperatorID(input.PoolID)
+	simType := simTypeFromMetadata(input.Metadata)
 	var lastErr error
 	for _, validityType := range validityTypes(input.Metadata) {
 		query := url.Values{
@@ -189,6 +194,7 @@ func (c *Client) RequestNumber(ctx context.Context, input sms.RequestNumberInput
 			"appId":        {input.ServiceID},
 			"countryId":    {input.CountryID},
 			"operatorId":   {operator},
+			"simType":      {simType},
 			"quantity":     {"1"},
 			"numberType":   {"1"},
 			"smsType":      {"1"},
@@ -297,14 +303,45 @@ func (c *Client) CancelNumber(ctx context.Context, input sms.CancelNumberInput) 
 }
 
 func (c *Client) GetCountries(ctx context.Context) ([]sms.ProviderCountry, error) {
-	return []sms.ProviderCountry{
-		{Code: countryCanada, Name: "Canada", ShortName: "CA", DialCode: "1"},
-		{Code: countryUS, Name: "United States", ShortName: "US", DialCode: "1"},
-	}, nil
+	return c.GetCountriesWithScope(ctx, sms.MetadataScope{SIMType: simVirtual})
 }
 
 func (c *Client) GetServices(ctx context.Context, countryID string) ([]sms.ProviderService, error) {
-	rows, err := c.storeRows(ctx, countryID)
+	return c.GetServicesWithScope(ctx, countryID, sms.MetadataScope{SIMType: simVirtual})
+}
+
+func (c *Client) MetadataScopes() []sms.MetadataScope {
+	return []sms.MetadataScope{{SIMType: simVirtual}, {SIMType: simPhysical}}
+}
+
+func (c *Client) GetCountriesWithScope(ctx context.Context, scope sms.MetadataScope) ([]sms.ProviderCountry, error) {
+	simType := normalizeSIMType(scope.SIMType)
+	candidates := []sms.ProviderCountry{
+		{Code: countryCanada, Name: "Canada", ShortName: "CA", DialCode: "1", SIMType: simType},
+		{Code: countryUS, Name: "United States", ShortName: "US", DialCode: "1", SIMType: simType},
+		{Code: countryUK, Name: "United Kingdom", ShortName: "GB", DialCode: "44", SIMType: simType},
+	}
+	countries := make([]sms.ProviderCountry, 0, len(candidates))
+	var requestErrs []error
+	for _, country := range candidates {
+		rows, err := c.storeRows(ctx, country.Code, simType)
+		if err != nil {
+			requestErrs = append(requestErrs, fmt.Errorf("country %s: %w", country.Code, err))
+			continue
+		}
+		if len(rows) > 0 {
+			countries = append(countries, country)
+		}
+	}
+	if len(requestErrs) > 0 {
+		return nil, errors.Join(requestErrs...)
+	}
+	return countries, nil
+}
+
+func (c *Client) GetServicesWithScope(ctx context.Context, countryID string, scope sms.MetadataScope) ([]sms.ProviderService, error) {
+	simType := normalizeSIMType(scope.SIMType)
+	rows, err := c.storeRows(ctx, countryID, simType)
 	if err != nil {
 		return nil, err
 	}
@@ -321,6 +358,7 @@ func (c *Client) GetServices(ctx context.Context, countryID string) ([]sms.Provi
 			CountryName: countryName(strconv.Itoa(row.CountryID)),
 			Price:       row.Price,
 			Stock:       row.Surplus,
+			SIMType:     simType,
 		})
 	}
 	return services, nil
@@ -338,7 +376,8 @@ func (c *Client) GetValidityOptions(ctx context.Context, input sms.ValidityOptio
 	query := url.Values{
 		"appId":      {serviceID},
 		"countryId":  {countryID},
-		"operatorId": {strings.TrimSpace(input.PoolID)},
+		"operatorId": {defaultOperatorID(input.PoolID)},
+		"simType":    {normalizeSIMType(input.SIMType)},
 		"cardType":   {"1"},
 		"smsType":    {"1"},
 	}
@@ -373,7 +412,7 @@ func (c *Client) GetValidityOptions(ctx context.Context, input sms.ValidityOptio
 	return options, nil
 }
 func (c *Client) GetPrice(ctx context.Context, input sms.ProviderPriceInput) (*sms.ProviderPrice, error) {
-	row, err := c.findStoreRow(ctx, input.CountryID, input.ServiceID)
+	row, err := c.findStoreRow(ctx, input.CountryID, input.ServiceID, input.SIMType)
 	if err != nil {
 		return nil, err
 	}
@@ -389,8 +428,8 @@ func (c *Client) GetPrice(ctx context.Context, input sms.ProviderPriceInput) (*s
 func (c *Client) GetStock(ctx context.Context, input sms.ProviderStockInput) (*sms.ProviderStock, error) {
 	return &sms.ProviderStock{Amount: 0}, nil
 }
-func (c *Client) findStoreRow(ctx context.Context, countryID, serviceID string) (*storeRow, error) {
-	rows, err := c.storeRows(ctx, countryID)
+func (c *Client) findStoreRow(ctx context.Context, countryID, serviceID, simType string) (*storeRow, error) {
+	rows, err := c.storeRows(ctx, countryID, normalizeSIMType(simType))
 	if err != nil {
 		return nil, err
 	}
@@ -402,7 +441,7 @@ func (c *Client) findStoreRow(ctx context.Context, countryID, serviceID string) 
 	return nil, sms.NewProviderError(sms.ErrPriceNotFound, "68sms service not found")
 }
 
-func (c *Client) storeRows(ctx context.Context, countryID string) ([]storeRow, error) {
+func (c *Client) storeRows(ctx context.Context, countryID, simType string) ([]storeRow, error) {
 	if countryID == "" {
 		countryID = countryUS
 	}
@@ -414,6 +453,7 @@ func (c *Client) storeRows(ctx context.Context, countryID string) ([]storeRow, e
 	query := url.Values{
 		"searchContent": {""},
 		"countryId":     {countryID},
+		"simType":       {normalizeSIMType(simType)},
 		"cardType":      {"1"},
 	}
 	raw, status, err := c.getStore(ctx, "/admin/app/store/list", query, credential)
@@ -456,6 +496,21 @@ func validityTypes(metadata json.RawMessage) []string {
 		add(value)
 	}
 	return values
+}
+
+func simTypeFromMetadata(metadata json.RawMessage) string {
+	var parsed serviceConfigMetadata
+	if len(metadata) > 0 && json.Unmarshal(metadata, &parsed) == nil {
+		return normalizeSIMType(parsed.SIMType)
+	}
+	return simVirtual
+}
+
+func normalizeSIMType(value string) string {
+	if strings.TrimSpace(value) == simPhysical {
+		return simPhysical
+	}
+	return simVirtual
 }
 
 func storeHTTPError(action string, status int, raw json.RawMessage) error {
@@ -721,6 +776,8 @@ func countryName(countryID string) string {
 		return "Canada"
 	case countryUS:
 		return "United States"
+	case countryUK:
+		return "United Kingdom"
 	default:
 		return countryID
 	}

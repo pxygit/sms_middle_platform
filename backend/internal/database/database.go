@@ -42,7 +42,67 @@ func AutoMigrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	if err := migrateProviderMetadataScopes(db); err != nil {
+		return err
+	}
 	return dropReceiveOrderServiceConfigConstraint(db)
+}
+
+func migrateProviderMetadataScopes(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`UPDATE sys_provider_countries SET sim_type = '1' WHERE provider_code = '68sms' AND sim_type = ''`).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`UPDATE sys_provider_services SET sim_type = '1' WHERE provider_code = '68sms' AND sim_type = ''`).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`
+UPDATE sys_service_configs
+SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{simType}', '"1"'::jsonb, true),
+    target_platform = CASE
+        WHEN target_platform LIKE '68sms-virtual-%' OR target_platform LIKE '68sms-physical-%' THEN target_platform
+        ELSE regexp_replace(target_platform, '^68sms-', '68sms-virtual-')
+    END
+WHERE provider_code = '68sms'
+  AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'simType')
+`).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`
+DO $$
+BEGIN
+	IF EXISTS (
+		SELECT 1 FROM pg_indexes
+		WHERE schemaname = current_schema()
+		  AND indexname = 'idx_provider_country'
+		  AND position('sim_type' in indexdef) = 0
+	) THEN
+		DROP INDEX idx_provider_country;
+	END IF;
+END $$;
+`).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_country ON sys_provider_countries (provider_code, sim_type, provider_country_id)`).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`
+DO $$
+BEGIN
+	IF EXISTS (
+		SELECT 1 FROM pg_indexes
+		WHERE schemaname = current_schema()
+		  AND indexname = 'idx_provider_service'
+		  AND position('sim_type' in indexdef) = 0
+	) THEN
+		DROP INDEX idx_provider_service;
+	END IF;
+END $$;
+`).Error; err != nil {
+			return err
+		}
+		return tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_service ON sys_provider_services (provider_code, sim_type, provider_country_id, provider_service_id)`).Error
+	})
 }
 
 func dropReceiveOrderServiceConfigConstraint(db *gorm.DB) error {

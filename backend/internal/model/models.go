@@ -69,6 +69,7 @@ func (SMSProvider) TableName() string { return "sys_sms_providers" }
 type ProviderCountry struct {
 	ID                uint       `gorm:"primaryKey" json:"id"`
 	ProviderCode      string     `gorm:"size:64;uniqueIndex:idx_provider_country;index;not null" json:"providerCode"`
+	SIMType           string     `gorm:"size:16;uniqueIndex:idx_provider_country;index;not null;default:''" json:"simType,omitempty"`
 	ProviderCountryID string     `gorm:"size:64;uniqueIndex:idx_provider_country;not null" json:"providerCountryId"`
 	Name              string     `gorm:"size:128;not null" json:"name"`
 	ShortName         string     `gorm:"size:64" json:"shortName"`
@@ -88,6 +89,7 @@ func (ProviderCountry) TableName() string { return "sys_provider_countries" }
 type ProviderService struct {
 	ID                uint       `gorm:"primaryKey" json:"id"`
 	ProviderCode      string     `gorm:"size:64;uniqueIndex:idx_provider_service;index;not null" json:"providerCode"`
+	SIMType           string     `gorm:"size:16;uniqueIndex:idx_provider_service;index;not null;default:''" json:"simType,omitempty"`
 	ProviderCountryID string     `gorm:"size:64;uniqueIndex:idx_provider_service;index;not null" json:"providerCountryId"`
 	ProviderServiceID string     `gorm:"size:64;uniqueIndex:idx_provider_service;not null" json:"providerServiceId"`
 	Name              string     `gorm:"size:160;not null" json:"name"`

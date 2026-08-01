@@ -23,26 +23,42 @@ func NewProviderMetadataService(db *gorm.DB, registry *sms.Registry) *ProviderMe
 	return &ProviderMetadataService{db: db, registry: registry}
 }
 
-func (s *ProviderMetadataService) Countries(ctx context.Context, providerCode string) ([]model.ProviderCountry, error) {
+func (s *ProviderMetadataService) Countries(ctx context.Context, providerCode, simType string) ([]model.ProviderCountry, error) {
 	providerCode = strings.TrimSpace(providerCode)
+	metadataProvider, err := s.metadataProvider(providerCode)
+	if err != nil {
+		return nil, err
+	}
+	scope, err := resolveMetadataScope(metadataProvider, simType)
+	if err != nil {
+		return nil, err
+	}
 	var countries []model.ProviderCountry
-	if err := s.db.Where("provider_code = ? AND status = ?", providerCode, model.StatusEnabled).Order("name asc").Find(&countries).Error; err != nil {
+	if err := s.db.Where("provider_code = ? AND sim_type = ? AND status = ?", providerCode, scope.SIMType, model.StatusEnabled).Order("name asc").Find(&countries).Error; err != nil {
 		return nil, err
 	}
 	if len(countries) > 0 {
 		return countries, nil
 	}
-	if err := s.SyncProviderCountries(ctx, providerCode); err != nil {
+	if err := s.SyncProviderCountries(ctx, providerCode, scope.SIMType); err != nil {
 		return nil, err
 	}
-	return countries, s.db.Where("provider_code = ? AND status = ?", providerCode, model.StatusEnabled).Order("name asc").Find(&countries).Error
+	return countries, s.db.Where("provider_code = ? AND sim_type = ? AND status = ?", providerCode, scope.SIMType, model.StatusEnabled).Order("name asc").Find(&countries).Error
 }
 
-func (s *ProviderMetadataService) Services(ctx context.Context, providerCode, countryID string) ([]model.ProviderService, error) {
+func (s *ProviderMetadataService) Services(ctx context.Context, providerCode, countryID, simType string) ([]model.ProviderService, error) {
 	providerCode = strings.TrimSpace(providerCode)
 	countryID = strings.TrimSpace(countryID)
+	metadataProvider, err := s.metadataProvider(providerCode)
+	if err != nil {
+		return nil, err
+	}
+	scope, err := resolveMetadataScope(metadataProvider, simType)
+	if err != nil {
+		return nil, err
+	}
 	var services []model.ProviderService
-	query := s.db.Where("provider_code = ? AND status = ?", providerCode, model.StatusEnabled)
+	query := s.db.Where("provider_code = ? AND sim_type = ? AND status = ?", providerCode, scope.SIMType, model.StatusEnabled)
 	if countryID != "" {
 		query = query.Where("provider_country_id = ?", countryID)
 	}
@@ -52,10 +68,10 @@ func (s *ProviderMetadataService) Services(ctx context.Context, providerCode, co
 	if len(services) > 0 {
 		return services, nil
 	}
-	if err := s.SyncProviderCountry(ctx, providerCode, countryID); err != nil {
+	if err := s.SyncProviderCountry(ctx, providerCode, countryID, scope.SIMType); err != nil {
 		return nil, err
 	}
-	query = s.db.Where("provider_code = ? AND status = ?", providerCode, model.StatusEnabled)
+	query = s.db.Where("provider_code = ? AND sim_type = ? AND status = ?", providerCode, scope.SIMType, model.StatusEnabled)
 	if countryID != "" {
 		query = query.Where("provider_country_id = ?", countryID)
 	}
@@ -150,33 +166,46 @@ func (s *ProviderMetadataService) SyncProvider(ctx context.Context, providerCode
 		}
 		return s.saveCatalog(providerCode, catalog)
 	}
-	countries, err := metadataProvider.GetCountries(ctx)
+	scopes := []sms.MetadataScope{{}}
+	if scopedProvider, ok := metadataProvider.(sms.ScopedMetadataProvider); ok {
+		scopes = scopedProvider.MetadataScopes()
+	}
+	var syncErrs []error
+	for _, scope := range scopes {
+		countries, err := getProviderCountries(ctx, metadataProvider, scope)
+		if err != nil {
+			syncErrs = append(syncErrs, fmt.Errorf("simType %s: %w", scope.SIMType, err))
+			continue
+		}
+		if err := s.saveCountries(providerCode, scope.SIMType, countries); err != nil {
+			return err
+		}
+		for _, country := range countries {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			countryID := providerCountryID(country)
+			services, err := getProviderServices(ctx, metadataProvider, countryID, scope)
+			if err != nil {
+				syncErrs = append(syncErrs, fmt.Errorf("simType %s country %s: %w", scope.SIMType, countryID, err))
+				continue
+			}
+			if err := s.saveServices(providerCode, countryID, country.Name, scope.SIMType, services); err != nil {
+				return err
+			}
+		}
+	}
+	return errors.Join(syncErrs...)
+}
+
+func (s *ProviderMetadataService) SyncProviderCountries(ctx context.Context, providerCode, simType string) error {
+	metadataProvider, err := s.metadataProvider(providerCode)
 	if err != nil {
 		return err
 	}
-	if err := s.saveCountries(providerCode, countries); err != nil {
-		return err
-	}
-	for _, country := range countries {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		countryID := providerCountryID(country)
-		services, err := metadataProvider.GetServices(ctx, countryID)
-		if err != nil {
-			continue
-		}
-		if err := s.saveServices(providerCode, countryID, country.Name, services); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *ProviderMetadataService) SyncProviderCountries(ctx context.Context, providerCode string) error {
-	metadataProvider, err := s.metadataProvider(providerCode)
+	scope, err := resolveMetadataScope(metadataProvider, simType)
 	if err != nil {
 		return err
 	}
@@ -187,28 +216,32 @@ func (s *ProviderMetadataService) SyncProviderCountries(ctx context.Context, pro
 		}
 		return s.saveCatalog(providerCode, catalog)
 	}
-	countries, err := metadataProvider.GetCountries(ctx)
+	countries, err := getProviderCountries(ctx, metadataProvider, scope)
 	if err != nil {
 		return err
 	}
-	return s.saveCountries(providerCode, countries)
+	return s.saveCountries(providerCode, scope.SIMType, countries)
 }
 
-func (s *ProviderMetadataService) SyncProviderCountry(ctx context.Context, providerCode, countryID string) error {
+func (s *ProviderMetadataService) SyncProviderCountry(ctx context.Context, providerCode, countryID, simType string) error {
 	metadataProvider, err := s.metadataProvider(providerCode)
 	if err != nil {
 		return err
 	}
 	if countryID == "" {
-		return s.SyncProvider(ctx, providerCode)
+		return errors.New("country is required when syncing provider services")
 	}
-	services, err := metadataProvider.GetServices(ctx, countryID)
+	scope, err := resolveMetadataScope(metadataProvider, simType)
+	if err != nil {
+		return err
+	}
+	services, err := getProviderServices(ctx, metadataProvider, countryID, scope)
 	if err != nil {
 		return err
 	}
 	var country model.ProviderCountry
-	_ = s.db.Where("provider_code = ? AND provider_country_id = ?", providerCode, countryID).First(&country).Error
-	return s.saveServices(providerCode, countryID, country.Name, services)
+	_ = s.db.Where("provider_code = ? AND sim_type = ? AND provider_country_id = ?", providerCode, scope.SIMType, countryID).First(&country).Error
+	return s.saveServices(providerCode, countryID, country.Name, scope.SIMType, services)
 }
 
 func (s *ProviderMetadataService) metadataProvider(providerCode string) (sms.MetadataProvider, error) {
@@ -223,11 +256,43 @@ func (s *ProviderMetadataService) metadataProvider(providerCode string) (sms.Met
 	return metadataProvider, nil
 }
 
+func resolveMetadataScope(provider sms.MetadataProvider, simType string) (sms.MetadataScope, error) {
+	simType = strings.TrimSpace(simType)
+	scopedProvider, ok := provider.(sms.ScopedMetadataProvider)
+	if !ok {
+		return sms.MetadataScope{}, nil
+	}
+	scopes := scopedProvider.MetadataScopes()
+	if simType == "" && len(scopes) > 0 {
+		return scopes[0], nil
+	}
+	for _, scope := range scopes {
+		if scope.SIMType == simType {
+			return scope, nil
+		}
+	}
+	return sms.MetadataScope{}, fmt.Errorf("unsupported simType %q", simType)
+}
+
+func getProviderCountries(ctx context.Context, provider sms.MetadataProvider, scope sms.MetadataScope) ([]sms.ProviderCountry, error) {
+	if scopedProvider, ok := provider.(sms.ScopedMetadataProvider); ok {
+		return scopedProvider.GetCountriesWithScope(ctx, scope)
+	}
+	return provider.GetCountries(ctx)
+}
+
+func getProviderServices(ctx context.Context, provider sms.MetadataProvider, countryID string, scope sms.MetadataScope) ([]sms.ProviderService, error) {
+	if scopedProvider, ok := provider.(sms.ScopedMetadataProvider); ok {
+		return scopedProvider.GetServicesWithScope(ctx, countryID, scope)
+	}
+	return provider.GetServices(ctx, countryID)
+}
+
 func (s *ProviderMetadataService) saveCatalog(providerCode string, catalog *sms.ProviderCatalog) error {
 	if catalog == nil {
 		return nil
 	}
-	if err := s.saveCountries(providerCode, catalog.Countries); err != nil {
+	if err := s.saveCountries(providerCode, "", catalog.Countries); err != nil {
 		return err
 	}
 	countryNames := make(map[string]string, len(catalog.Countries))
@@ -240,14 +305,14 @@ func (s *ProviderMetadataService) saveCatalog(providerCode string, catalog *sms.
 		servicesByCountry[countryID] = append(servicesByCountry[countryID], service)
 	}
 	for countryID, services := range servicesByCountry {
-		if err := s.saveServices(providerCode, countryID, countryNames[countryID], services); err != nil {
+		if err := s.saveServices(providerCode, countryID, countryNames[countryID], "", services); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *ProviderMetadataService) saveCountries(providerCode string, countries []sms.ProviderCountry) error {
+func (s *ProviderMetadataService) saveCountries(providerCode, simType string, countries []sms.ProviderCountry) error {
 	now := time.Now()
 	activeIDs := make([]string, 0, len(countries))
 	return s.db.Transaction(func(tx *gorm.DB) error {
@@ -259,6 +324,7 @@ func (s *ProviderMetadataService) saveCountries(providerCode string, countries [
 			activeIDs = append(activeIDs, countryID)
 			record := model.ProviderCountry{
 				ProviderCode:      providerCode,
+				SIMType:           simType,
 				ProviderCountryID: countryID,
 				Name:              cleanName(country.Name, countryID),
 				ShortName:         firstNonEmpty(country.ShortName, country.Code, countryID),
@@ -268,7 +334,7 @@ func (s *ProviderMetadataService) saveCountries(providerCode string, countries [
 				SyncedAt:          &now,
 			}
 			var existing model.ProviderCountry
-			err := tx.Where("provider_code = ? AND provider_country_id = ?", providerCode, countryID).First(&existing).Error
+			err := tx.Where("provider_code = ? AND sim_type = ? AND provider_country_id = ?", providerCode, simType, countryID).First(&existing).Error
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				if err := tx.Create(&record).Error; err != nil {
 					return err
@@ -289,16 +355,20 @@ func (s *ProviderMetadataService) saveCountries(providerCode string, countries [
 				return err
 			}
 		}
+		disabledCountries := tx.Model(&model.ProviderCountry{}).Where("provider_code = ? AND sim_type = ?", providerCode, simType)
+		disabledServices := tx.Model(&model.ProviderService{}).Where("provider_code = ? AND sim_type = ?", providerCode, simType)
 		if len(activeIDs) > 0 {
-			return tx.Model(&model.ProviderCountry{}).
-				Where("provider_code = ? AND provider_country_id NOT IN ?", providerCode, activeIDs).
-				Update("status", model.StatusDisabled).Error
+			disabledCountries = disabledCountries.Where("provider_country_id NOT IN ?", activeIDs)
+			disabledServices = disabledServices.Where("provider_country_id NOT IN ?", activeIDs)
 		}
-		return nil
+		if err := disabledCountries.Update("status", model.StatusDisabled).Error; err != nil {
+			return err
+		}
+		return disabledServices.Update("status", model.StatusDisabled).Error
 	})
 }
 
-func (s *ProviderMetadataService) saveServices(providerCode, countryID, countryName string, services []sms.ProviderService) error {
+func (s *ProviderMetadataService) saveServices(providerCode, countryID, countryName, simType string, services []sms.ProviderService) error {
 	now := time.Now()
 	activeIDs := make([]string, 0, len(services))
 	if countryName == "" {
@@ -322,6 +392,7 @@ func (s *ProviderMetadataService) saveServices(providerCode, countryID, countryN
 			activeIDs = append(activeIDs, serviceID)
 			record := model.ProviderService{
 				ProviderCode:      providerCode,
+				SIMType:           simType,
 				ProviderCountryID: serviceCountryID,
 				ProviderServiceID: serviceID,
 				Name:              cleanName(service.Name, serviceID),
@@ -330,7 +401,7 @@ func (s *ProviderMetadataService) saveServices(providerCode, countryID, countryN
 				SyncedAt:          &now,
 			}
 			var existing model.ProviderService
-			err := tx.Where("provider_code = ? AND provider_country_id = ? AND provider_service_id = ?", providerCode, serviceCountryID, serviceID).First(&existing).Error
+			err := tx.Where("provider_code = ? AND sim_type = ? AND provider_country_id = ? AND provider_service_id = ?", providerCode, simType, serviceCountryID, serviceID).First(&existing).Error
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				if err := tx.Create(&record).Error; err != nil {
 					return err
@@ -350,16 +421,19 @@ func (s *ProviderMetadataService) saveServices(providerCode, countryID, countryN
 				return err
 			}
 		}
-		if countryID != "" && len(activeIDs) > 0 {
-			if err := tx.Model(&model.ProviderService{}).
-				Where("provider_code = ? AND provider_country_id = ? AND provider_service_id NOT IN ?", providerCode, countryID, activeIDs).
-				Update("status", model.StatusDisabled).Error; err != nil {
+		if countryID != "" {
+			disabled := tx.Model(&model.ProviderService{}).
+				Where("provider_code = ? AND sim_type = ? AND provider_country_id = ?", providerCode, simType, countryID)
+			if len(activeIDs) > 0 {
+				disabled = disabled.Where("provider_service_id NOT IN ?", activeIDs)
+			}
+			if err := disabled.Update("status", model.StatusDisabled).Error; err != nil {
 				return err
 			}
 		}
 		if countryID != "" {
 			return tx.Model(&model.ProviderCountry{}).
-				Where("provider_code = ? AND provider_country_id = ?", providerCode, countryID).
+				Where("provider_code = ? AND sim_type = ? AND provider_country_id = ?", providerCode, simType, countryID).
 				Update("services_synced_at", &now).Error
 		}
 		return nil

@@ -293,6 +293,11 @@ func (s *CatalogService) ListServiceConfigs() ([]model.ServiceConfig, error) {
 }
 
 func (s *CatalogService) CreateServiceConfig(input ServiceConfigInput) (*model.ServiceConfig, error) {
+	metadata, err := normalizeServiceConfigMetadata(input.ProviderCode, input.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	input.Metadata = metadata
 	if input.TimeoutSeconds < 0 {
 		input.TimeoutSeconds = 0
 	}
@@ -334,6 +339,11 @@ func (s *CatalogService) UpdateServiceConfig(id uint, input ServiceConfigInput) 
 	if err := s.db.First(&config, id).Error; err != nil {
 		return nil, err
 	}
+	metadata, err := normalizeServiceConfigMetadata(input.ProviderCode, input.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	input.Metadata = metadata
 	updates := map[string]interface{}{
 		"provider_code":       input.ProviderCode,
 		"target_platform":     input.TargetPlatform,
@@ -361,6 +371,42 @@ func (s *CatalogService) UpdateServiceConfig(id uint, input ServiceConfigInput) 
 		return nil, err
 	}
 	return &config, s.db.First(&config, id).Error
+}
+
+func normalizeServiceConfigMetadata(providerCode string, metadata datatypes.JSON) (datatypes.JSON, error) {
+	if providerCode != "68sms" {
+		return metadata, nil
+	}
+	values := map[string]interface{}{}
+	if len(metadata) > 0 && string(metadata) != "null" {
+		if err := json.Unmarshal(metadata, &values); err != nil {
+			return nil, errors.New("invalid service config metadata")
+		}
+	}
+	simType := "1"
+	if value, ok := values["simType"]; ok {
+		switch typed := value.(type) {
+		case string:
+			simType = strings.TrimSpace(typed)
+		case float64:
+			switch typed {
+			case 1:
+				simType = "1"
+			case 2:
+				simType = "2"
+			default:
+				simType = ""
+			}
+		default:
+			simType = ""
+		}
+	}
+	if simType != "1" && simType != "2" {
+		return nil, errors.New("simType must be 1 or 2")
+	}
+	values["simType"] = simType
+	raw, err := json.Marshal(values)
+	return datatypes.JSON(raw), err
 }
 
 func (s *CatalogService) isLongLivedProvider(providerCode string) bool {

@@ -70,6 +70,8 @@ import {
   listProviderServices,
   listProviders,
   listServiceConfigs,
+  refreshProviderCountries,
+  refreshProviderServices,
   revealCardCode,
   updateAnnouncement,
   updateProvider,
@@ -736,6 +738,9 @@ function ServicesPage() {
   const countryId = Form.useWatch('providerCountryId', form);
   const serviceId = Form.useWatch('providerServiceId', form);
   const validityType = Form.useWatch('validityType', form);
+  const simType = Form.useWatch('simType', form);
+  const isSMS68 = providerCode === '68sms';
+  const metadataScopeReady = !isSMS68 || Boolean(simType);
   const quoteUnsupported = providerCode === '68sms' && Boolean(countryId) && Boolean(serviceId);
   const query = useQuery({ queryKey: ['service-configs'], queryFn: listServiceConfigs });
   const providers = useQuery({ queryKey: ['providers'], queryFn: listProviders });
@@ -743,24 +748,70 @@ function ServicesPage() {
   const selectedProvider = (providers.data || []).find((item) => item.code === providerCode);
   const isLongLivedProvider = isLongLivedSMSProvider(selectedProvider, providerCode);
   const countries = useQuery({
-    queryKey: ['provider-countries', providerCode],
-    queryFn: () => listProviderCountries(providerCode),
-    enabled: open && Boolean(providerCode),
+    queryKey: ['provider-countries', providerCode, simType || ''],
+    queryFn: () => listProviderCountries(providerCode, simType),
+    enabled: open && Boolean(providerCode) && metadataScopeReady,
   });
   const services = useQuery({
-    queryKey: ['provider-services', providerCode, countryId],
-    queryFn: () => listProviderServices(providerCode, countryId),
-    enabled: open && Boolean(providerCode) && Boolean(countryId),
+    queryKey: ['provider-services', providerCode, countryId, simType || ''],
+    queryFn: () => listProviderServices(providerCode, countryId, simType),
+    enabled: open && Boolean(providerCode) && Boolean(countryId) && metadataScopeReady,
   });
   const quote = useQuery({
-    queryKey: ['provider-quote', providerCode, countryId, serviceId, validityType],
-    queryFn: () => getProviderQuote(providerCode, { countryId, serviceId, poolId: validityType }),
+    queryKey: ['provider-quote', providerCode, countryId, serviceId, validityType, simType || ''],
+    queryFn: () => getProviderQuote(providerCode, { countryId, serviceId, poolId: validityType, simType }),
     enabled: open && Boolean(providerCode) && Boolean(countryId) && Boolean(serviceId) && !quoteUnsupported,
   });
   const validityOptions = useQuery({
-    queryKey: ['provider-validity-options', providerCode, countryId, serviceId],
-    queryFn: () => getProviderValidityOptions(providerCode, { countryId, serviceId }),
+    queryKey: ['provider-validity-options', providerCode, countryId, serviceId, simType || ''],
+    queryFn: () => getProviderValidityOptions(providerCode, { countryId, serviceId, simType }),
     enabled: open && isLongLivedProvider && Boolean(countryId) && Boolean(serviceId),
+  });
+  const refreshCountriesMutation = useMutation({
+    mutationFn: (scope: { providerCode: string; simType?: string }) => refreshProviderCountries(scope.providerCode, scope.simType),
+    onSuccess: (data, scope) => {
+      qc.setQueryData(['provider-countries', scope.providerCode, scope.simType || ''], data);
+      const currentCountryId = form.getFieldValue('providerCountryId');
+      const sameScope = form.getFieldValue('providerCode') === scope.providerCode
+        && String(form.getFieldValue('simType') || '') === String(scope.simType || '');
+      if (sameScope && currentCountryId && !data.some((item) => countryValue(item) === currentCountryId)) {
+        form.setFieldsValue({
+          providerCountryId: undefined,
+          providerServiceId: undefined,
+          countryCode: '',
+          countryName: '',
+          displayName: '',
+          targetPlatform: undefined,
+          maxPrice: undefined,
+          metadata: undefined,
+          validityType: undefined,
+        });
+      }
+      message.success(t('countriesRefreshed'));
+    },
+    onError: (error: Error) => message.error(localizedError(error.message, t)),
+  });
+  const refreshServicesMutation = useMutation({
+    mutationFn: (scope: { providerCode: string; countryId?: string; simType?: string }) => refreshProviderServices(scope.providerCode, scope.countryId, scope.simType),
+    onSuccess: (data, scope) => {
+      qc.setQueryData(['provider-services', scope.providerCode, scope.countryId, scope.simType || ''], data);
+      const currentServiceId = form.getFieldValue('providerServiceId');
+      const sameScope = form.getFieldValue('providerCode') === scope.providerCode
+        && form.getFieldValue('providerCountryId') === scope.countryId
+        && String(form.getFieldValue('simType') || '') === String(scope.simType || '');
+      if (sameScope && currentServiceId && !data.some((item) => serviceValue(item) === currentServiceId)) {
+        form.setFieldsValue({
+          providerServiceId: undefined,
+          displayName: '',
+          targetPlatform: undefined,
+          maxPrice: undefined,
+          metadata: undefined,
+          validityType: undefined,
+        });
+      }
+      message.success(t('servicesRefreshed'));
+    },
+    onError: (error: Error) => message.error(localizedError(error.message, t)),
   });
   const mutation = useMutation({
     mutationFn: (values: any) => {
@@ -769,11 +820,13 @@ function ServicesPage() {
         ...(values.metadata || {}),
         validityType: values.validityType,
         endDay: values.validityType,
+        simType: isSMS68 ? values.simType : undefined,
         validityLabel: selectedValidity ? validityLabel(selectedValidity, t) : undefined,
         validityStock: selectedValidity?.stock,
       } : values.metadata;
       const payload = { ...values, timeoutSeconds: isLongLivedProvider ? 0 : values.timeoutSeconds, metadata };
       delete payload.validityType;
+      delete payload.simType;
       return editing ? updateServiceConfig(editing.id, payload) : createServiceConfig(payload);
     },
     onSuccess: () => {
@@ -793,7 +846,7 @@ function ServicesPage() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ providerCode: 'smspool', timeoutSeconds: 1200, status: 'enabled', metadata: undefined, validityType: undefined });
+    form.setFieldsValue({ providerCode: 'smspool', timeoutSeconds: 1200, status: 'enabled', metadata: undefined, validityType: undefined, simType: undefined });
     setOpen(true);
   };
 
@@ -801,7 +854,12 @@ function ServicesPage() {
     setEditing(record);
     const provider = (providers.data || []).find((item) => item.code === record.providerCode);
     const longLived = isLongLivedSMSProvider(provider, record.providerCode);
-    form.setFieldsValue({ ...record, timeoutSeconds: longLived ? 0 : record.timeoutSeconds, validityType: serviceConfigValidityType(record.metadata) });
+    form.setFieldsValue({
+      ...record,
+      timeoutSeconds: longLived ? 0 : record.timeoutSeconds,
+      validityType: serviceConfigValidityType(record.metadata),
+      simType: serviceConfigSIMType(record.metadata, record.providerCode),
+    });
     setOpen(true);
   };
 
@@ -826,7 +884,12 @@ function ServicesPage() {
     form.setFieldsValue({
       providerServiceId: value,
       displayName: selected?.name || '',
-      targetPlatform: buildServiceKey(providerCode, country?.shortName || country?.name || '', selected?.name || ''),
+      targetPlatform: buildServiceKey(
+        providerCode,
+        isSMS68 ? simTypeKey(simType) : '',
+        country?.shortName || country?.name || '',
+        selected?.name || '',
+      ),
       maxPrice: undefined,
       metadata: undefined,
       validityType: undefined,
@@ -915,18 +978,67 @@ function ServicesPage() {
                   maxPrice: undefined,
                   metadata: undefined,
                   validityType: undefined,
+                  simType: value === '68sms' ? '1' : undefined,
                   timeoutSeconds: nextLongLived ? 0 : 1200,
                 });
               }}
             />
           </Form.Item>
-          <Form.Item name="providerCountryId" label={t('providerCountry')} rules={[{ required: true }]}>
+          {isSMS68 && (
+            <Form.Item name="simType" label={t('simType')} rules={[{ required: true }]}>
+              <Select
+                options={[
+                  { label: t('virtualSIM'), value: '1' },
+                  { label: t('physicalSIM'), value: '2' },
+                ]}
+                onChange={() => {
+                  form.setFieldsValue({
+                    providerCountryId: undefined,
+                    providerServiceId: undefined,
+                    countryCode: '',
+                    countryName: '',
+                    displayName: '',
+                    targetPlatform: undefined,
+                    maxPrice: undefined,
+                    metadata: undefined,
+                    validityType: undefined,
+                  });
+                }}
+              />
+            </Form.Item>
+          )}
+          <Form.Item
+            name="providerCountryId"
+            label={(
+              <Space size={4}>
+                <span>{t('providerCountry')}</span>
+                <Tooltip title={t('refreshCountries')}>
+                  <Button
+                    type="text"
+                    size="small"
+                    shape="circle"
+                    htmlType="button"
+                    icon={<RefreshCw size={14} />}
+                    loading={refreshCountriesMutation.isPending}
+                    disabled={!providerCode || !metadataScopeReady}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      refreshCountriesMutation.mutate({ providerCode, simType });
+                    }}
+                  />
+                </Tooltip>
+              </Space>
+            )}
+            rules={[{ required: true }]}
+          >
             <Select
               showSearch
-              loading={countries.isLoading}
+              loading={countries.isLoading || refreshCountriesMutation.isPending}
+              disabled={!metadataScopeReady}
               optionFilterProp="label"
-              placeholder={t('selectProviderFirst')}
-              notFoundContent={countries.isLoading ? <Space><Spin size="small" />{t('syncingProviderCountries')}</Space> : null}
+              placeholder={isSMS68 && !simType ? t('selectSIMTypeFirst') : t('selectProviderFirst')}
+              notFoundContent={(countries.isFetching || refreshCountriesMutation.isPending) ? <Space><Spin size="small" />{t('syncingProviderCountries')}</Space> : null}
               onChange={onCountryChange}
               options={(countries.data || []).map((item: ProviderCountry) => ({
                 label: countryLabel(item),
@@ -934,14 +1046,38 @@ function ServicesPage() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="providerServiceId" label={t('providerService')} rules={[{ required: true }]}>
+          <Form.Item
+            name="providerServiceId"
+            label={(
+              <Space size={4}>
+                <span>{t('providerService')}</span>
+                <Tooltip title={t('refreshServices')}>
+                  <Button
+                    type="text"
+                    size="small"
+                    shape="circle"
+                    htmlType="button"
+                    icon={<RefreshCw size={14} />}
+                    loading={refreshServicesMutation.isPending}
+                    disabled={!countryId}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      refreshServicesMutation.mutate({ providerCode, countryId, simType });
+                    }}
+                  />
+                </Tooltip>
+              </Space>
+            )}
+            rules={[{ required: true }]}
+          >
             <Select
               showSearch
-              loading={services.isLoading}
+              loading={services.isLoading || refreshServicesMutation.isPending}
               disabled={!countryId}
               optionFilterProp="label"
               placeholder={t('selectCountryFirst')}
-              notFoundContent={services.isLoading ? <Space><Spin size="small" />{t('syncingProviderServices')}</Space> : null}
+              notFoundContent={(services.isFetching || refreshServicesMutation.isPending) ? <Space><Spin size="small" />{t('syncingProviderServices')}</Space> : null}
               onChange={onServiceChange}
               options={(services.data || []).map((item: ProviderService) => ({
                 label: serviceLabel(item),
@@ -1686,6 +1822,17 @@ function serviceConfigValidityType(metadata: unknown) {
   return typeof value === 'string' ? value : undefined;
 }
 
+function serviceConfigSIMType(metadata: unknown, providerCode?: string) {
+  if (!metadata || typeof metadata !== 'object') return providerCode === '68sms' ? '1' : undefined;
+  const value = (metadata as { simType?: unknown }).simType;
+  if (value === '1' || value === '2') return value;
+  return providerCode === '68sms' ? '1' : undefined;
+}
+
+function simTypeKey(simType?: string) {
+  return simType === '2' ? 'physical' : 'virtual';
+}
+
 function serviceConfigValidityDisplay(metadata: unknown, t: (key: string, options?: any) => string) {
   if (!metadata || typeof metadata !== 'object') return '-';
   const value = metadata as { validityLabel?: unknown; validityMinDays?: unknown; validityMaxDays?: unknown; validityType?: unknown };
@@ -1741,8 +1888,8 @@ function filterRows<T>(rows: T[], keyword: string) {
   return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(normalized));
 }
 
-function buildServiceKey(provider: string, country: string, service: string) {
-  return [provider, country, service]
+function buildServiceKey(...parts: string[]) {
+  return parts
     .filter(Boolean)
     .map((part) => part.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''))
     .join('-');

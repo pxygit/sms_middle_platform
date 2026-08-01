@@ -133,6 +133,7 @@ export interface ProviderCountry {
   shortName: string;
   region: string;
   dialCode?: string;
+  simType?: string;
 }
 
 export interface ProviderService {
@@ -146,6 +147,7 @@ export interface ProviderService {
   syncedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  simType?: string;
 }
 
 export interface ProviderPrice {
