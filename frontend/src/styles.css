@@ -419,6 +419,16 @@ input {
   min-width: 0;
 }
 
+.orders-stack > .order-panel:only-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.orders-stack > .order-panel:only-child > .empty-state {
+  flex: 1;
+}
+
 .cancel-row {
   margin-top: 2px;
 }

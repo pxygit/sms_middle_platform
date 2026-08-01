@@ -211,7 +211,13 @@ export function HomePage() {
             prefix={<KeyRound size={18} />}
           />
           <Space wrap>
-            <Button size="large" shape="round" onClick={() => verifyMutation.mutate(cardCode)} loading={verifyMutation.isPending}>
+            <Button
+              size="large"
+              shape="round"
+              onClick={() => verifyMutation.mutate(cardCode)}
+              loading={verifyMutation.isPending}
+              disabled={!cardCode.trim()}
+            >
               {t('verify')}
             </Button>
             <Button
