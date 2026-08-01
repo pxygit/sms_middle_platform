@@ -185,7 +185,7 @@ function Dashboard() {
       setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt: data.checkedAt || new Date().toISOString() } }));
       void providers.refetch();
     } catch (error: any) {
-      setBalances((current) => ({ ...current, [provider.code]: { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt: new Date().toISOString() } }));
+      setBalances((current) => ({ ...current, [provider.code]: { error: error?.message ? localizedError(error.message, t) : t('balanceCheckFailed'), checkedAt: new Date().toISOString() } }));
     } finally {
       setCheckingProviders((current) => ({ ...current, [provider.code]: false }));
     }
@@ -200,7 +200,7 @@ function Dashboard() {
             const data = await getProviderBalance(provider.code);
             return [provider.code, { balance: data.balance, checkedAt: data.checkedAt || new Date().toISOString() }] as const;
           } catch (error: any) {
-            return [provider.code, { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt: new Date().toISOString() }] as const;
+            return [provider.code, { error: error?.message ? localizedError(error.message, t) : t('balanceCheckFailed'), checkedAt: new Date().toISOString() }] as const;
           }
         }),
       );
@@ -511,7 +511,7 @@ function ProvidersPage() {
       setBalances((current) => ({ ...current, [provider.code]: { balance: data.balance, checkedAt: data.checkedAt || new Date().toISOString() } }));
       void qc.invalidateQueries({ queryKey: ['providers'] });
     } catch (error: any) {
-      setBalances((current) => ({ ...current, [provider.code]: { error: localizedError(error?.message || t('balanceCheckFailed'), t), checkedAt: new Date().toISOString() } }));
+      setBalances((current) => ({ ...current, [provider.code]: { error: error?.message ? localizedError(error.message, t) : t('balanceCheckFailed'), checkedAt: new Date().toISOString() } }));
     } finally {
       setCheckingProviders((current) => ({ ...current, [provider.code]: false }));
     }
@@ -1246,14 +1246,14 @@ function CardsPage() {
   const mutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => updateCardStatus(id, status),
     onSuccess: () => {
-      msg.success(t('save'));
+      msg.success(t('saveSuccess'));
       void qc.invalidateQueries({ queryKey: ['card-codes'] });
     },
   });
   const deleteMutation = useMutation({
     mutationFn: deleteCardCode,
     onSuccess: () => {
-      msg.success(t('delete'));
+      msg.success(t('deleteSuccess'));
       void qc.invalidateQueries({ queryKey: ['card-codes'] });
     },
     onError: (error: Error) => msg.error(localizedError(error.message, t)),
@@ -1387,7 +1387,7 @@ function AuditPage() {
             dataIndex: 'metadata',
             width: 320,
             render: (value: AuditLog['metadata']) => {
-              const text = formatAuditMetadata(value);
+              const text = formatAuditMetadata(value, t);
               return (
                 <Tooltip title={text}>
                   <span className="audit-details-cell">{truncateText(text, 96)}</span>
@@ -1424,7 +1424,7 @@ function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }
       form.resetFields();
       onClose();
     },
-    onError: (error: Error) => msg.error(error.message),
+    onError: (error: Error) => msg.error(localizedError(error.message, t)),
   });
   return (
     <Modal title={t('changePassword')} open={open} footer={null} onCancel={onClose}>
@@ -1567,7 +1567,7 @@ function RevealableCardCode({ id, masked }: { id: number; masked: string }) {
       setPlain(data.code);
       setVisible(true);
     } catch (error: any) {
-      msg.error(error?.message || t('codeHiddenUnavailable'));
+      msg.error(error?.message ? localizedError(error.message, t) : t('codeHiddenUnavailable'));
     }
   };
   const value = visible && plain ? plain : masked;
@@ -1594,7 +1594,7 @@ function RevealableCardCode({ id, masked }: { id: number; masked: string }) {
             await navigator.clipboard.writeText(copyValue);
             msg.success(t('copied'));
           } catch (error: any) {
-            msg.error(error?.message || t('codeHiddenUnavailable'));
+            msg.error(error?.message ? localizedError(error.message, t) : t('codeHiddenUnavailable'));
           }
         }}
       />
@@ -1650,13 +1650,13 @@ function announcementNotifyOptions(t: (key: string, options?: any) => string) {
 function announcementStatusText(status: string, t: (key: string, options?: any) => string) {
   const key = `announcementStatus_${status}`;
   const translated = t(key);
-  return translated === key ? status : translated;
+  return translated === key ? t('unknownStatus') : translated;
 }
 
 function announcementNotifyText(mode: string, t: (key: string, options?: any) => string) {
   const key = `announcementNotify_${mode}`;
   const translated = t(key);
-  return translated === key ? mode : translated;
+  return translated === key ? t('unknownNotifyMode') : translated;
 }
 
 function announcementStatusColor(status: string) {
@@ -1713,7 +1713,7 @@ function translatedStatus(status: string, t: (key: string, options?: any) => str
   const translated = t(statusKey);
   if (translated !== statusKey) return translated;
   const fallback = t(status);
-  return fallback === status ? status : fallback;
+  return fallback === status ? t('unknownStatus') : fallback;
 }
 
 function auditActionKey(action: string) {
@@ -1723,7 +1723,7 @@ function auditActionKey(action: string) {
 function auditActionLabel(action: string, t: (key: string, options?: any) => string) {
   const key = `audit_${auditActionKey(action)}`;
   const translated = t(key);
-  return translated === key ? action : translated;
+  return translated === key ? t('unknownOperation') : translated;
 }
 
 function auditActionDescription(action: string, t: (key: string, options?: any) => string) {
@@ -1736,10 +1736,10 @@ function auditResourceLabel(resourceType: string | undefined, t: (key: string, o
   if (!resourceType) return '-';
   const key = `resource_${resourceType}`;
   const translated = t(key);
-  return translated === key ? resourceType : translated;
+  return translated === key ? t('unknownResource') : translated;
 }
 
-function formatAuditMetadata(metadata?: Record<string, unknown> | string) {
+function formatAuditMetadata(metadata: Record<string, unknown> | string | undefined, t: (key: string, options?: any) => string) {
   if (!metadata) return '-';
   let value: unknown = metadata;
   if (typeof metadata === 'string') {
@@ -1752,13 +1752,30 @@ function formatAuditMetadata(metadata?: Record<string, unknown> | string) {
   if (!value || typeof value !== 'object') return String(value ?? '-');
   const entries = Object.entries(value as Record<string, unknown>);
   if (entries.length === 0) return '-';
-  return entries.map(([key, entry]) => `${key}: ${formatAuditValue(entry)}`).join(' | ');
+  return entries.map(([key, entry]) => `${auditFieldLabel(key, t)}: ${formatAuditValue(entry, t)}`).join(' | ');
 }
 
-function formatAuditValue(value: unknown): string {
+function auditFieldLabel(field: string, t: (key: string, options?: any) => string) {
+  const auditKey = `auditField_${field}`;
+  const auditTranslation = t(auditKey);
+  if (auditTranslation !== auditKey) return auditTranslation;
+  const commonTranslation = t(field);
+  return commonTranslation === field ? t('otherInfo') : commonTranslation;
+}
+
+function formatAuditValue(value: unknown, t: (key: string, options?: any) => string): string {
   if (value === undefined || value === null || value === '') return '-';
   if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'boolean') return value ? t('yes') : t('no');
   if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'string') {
+    const status = translatedStatus(value, t);
+    if (status !== t('unknownStatus')) return status;
+    const notifyMode = announcementNotifyText(value, t);
+    if (notifyMode !== t('unknownNotifyMode')) return notifyMode;
+    const resource = auditResourceLabel(value, t);
+    if (resource !== t('unknownResource')) return resource;
+  }
   return String(value);
 }
 

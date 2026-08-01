@@ -23,16 +23,16 @@ type ActiveOrderItem = {
 
 function statusText(status?: string, t?: (key: string) => string) {
   const map: Record<string, string> = {
-    created: t?.('created') || 'Waiting',
-    active: t?.('waiting') || 'Waiting for SMS',
-    completed: t?.('completed') || 'Completed',
-    cancel_requested: t?.('cancel_requested') || 'Cancelling',
-    sms_received: t?.('received') || 'Received',
-    cancelled: t?.('cancelled') || 'Cancelled',
-    failed: t?.('failed') || 'Failed',
-    expired: t?.('expired') || 'Expired',
+    created: t?.('created') || '',
+    active: t?.('waiting') || '',
+    completed: t?.('completed') || '',
+    cancel_requested: t?.('cancel_requested') || '',
+    sms_received: t?.('received') || '',
+    cancelled: t?.('cancelled') || '',
+    failed: t?.('failed') || '',
+    expired: t?.('expired') || '',
   };
-  return map[status || ''] || status || '-';
+  return map[status || ''] || t?.('unknownStatus') || '-';
 }
 
 export function HomePage() {
@@ -113,7 +113,7 @@ export function HomePage() {
     onSuccess: (data) => {
       setLocalStorageItem('lastCardCode', cardCode);
       setVerified(data);
-      msg.success(t('verify'));
+      msg.success(t('cardVerified'));
     },
     onError: (error: Error) => msg.error(localizedError(error.message, t)),
   });
@@ -123,7 +123,7 @@ export function HomePage() {
     onSuccess: (data) => {
       setLocalStorageItem('lastCardCode', cardCode);
       setOrders((current) => [{ cardCode, order: data }, ...current.filter((item) => item.order.orderNo !== data.orderNo)]);
-      msg.success(t('requestNumber'));
+      msg.success(t('numberRequested'));
     },
     onError: (error: Error) => msg.error(localizedError(error.message, t)),
   });

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { login } from '../../api/admin';
 import { PreferenceBar } from '../../components/PreferenceBar';
 import { setLocalStorageItem } from '../../utils/storage';
+import { localizedError } from '../../utils/errors';
 
 export function AdminLoginPage() {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export function AdminLoginPage() {
       setLocalStorageItem('adminUser', JSON.stringify(data.admin));
       navigate(searchParams.get('redirect') || '/admin', { replace: true });
     },
-    onError: (error: Error) => msg.error(error.message),
+    onError: (error: Error) => msg.error(localizedError(error.message, t)),
   });
 
   return (
