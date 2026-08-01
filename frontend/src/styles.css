@@ -230,6 +230,30 @@ input {
   overflow: hidden;
 }
 
+.admin-form-modal {
+  max-width: calc(100vw - 32px);
+  padding-bottom: 0;
+}
+
+.admin-form-modal .ant-modal-container {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+}
+
+.admin-form-modal .ant-modal-header,
+.admin-form-modal .ant-modal-footer {
+  flex: 0 0 auto;
+}
+
+.admin-form-modal .ant-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .announcement-modal-meta {
   margin-bottom: 12px;
 }

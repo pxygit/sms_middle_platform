@@ -672,7 +672,7 @@ function ProvidersPage() {
           }),
         ]}
       />
-      <Modal title={t('providerSettings')} open={open} footer={null} onCancel={() => setOpen(false)} width={640}>
+      <Modal centered className="admin-form-modal" title={t('providerSettings')} open={open} footer={null} onCancel={() => setOpen(false)} width={640}>
         <Form
           form={form}
           layout="vertical"
@@ -953,7 +953,7 @@ function ServicesPage() {
           }),
         ]}
       />
-      <Modal title={editing ? t('save') : t('create')} open={open} footer={null} onCancel={() => setOpen(false)} width={720}>
+      <Modal centered className="admin-form-modal" title={editing ? t('save') : t('create')} open={open} footer={null} onCancel={() => setOpen(false)} width={720}>
         <Alert className="form-help" type="info" showIcon message={t('serviceConfigHelp')} />
         <Form
           form={form}
@@ -1211,7 +1211,7 @@ function BatchesPage() {
           }),
         ]}
       />
-      <Modal title={t('create')} open={open} footer={null} onCancel={() => setOpen(false)}>
+      <Modal centered className="admin-form-modal" title={t('create')} open={open} footer={null} onCancel={() => setOpen(false)}>
         <Form
           form={form}
           layout="vertical"
@@ -1428,7 +1428,7 @@ function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }
     onError: (error: Error) => msg.error(localizedError(error.message, t)),
   });
   return (
-    <Modal title={t('changePassword')} open={open} footer={null} onCancel={onClose}>
+    <Modal centered className="admin-form-modal" title={t('changePassword')} open={open} footer={null} onCancel={onClose}>
       {contextHolder}
       <Form
         form={form}
