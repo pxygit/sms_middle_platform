@@ -11,6 +11,7 @@ import (
 
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CatalogService struct {
@@ -132,6 +133,66 @@ func (s *CatalogService) ConfigureRuntimeProviders() error {
 		}
 	}
 	return nil
+}
+
+// PersistRuntimeCommunication merges a provider-issued Communication value
+// into the encrypted credential while preserving concurrently edited fields.
+func (s *CatalogService) PersistRuntimeCommunication(providerCode, communication, fallbackCredential string) error {
+	providerCode = strings.TrimSpace(providerCode)
+	communication = strings.TrimSpace(communication)
+	if providerCode == "" || communication == "" {
+		return errors.New("provider code and communication are required")
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var provider model.SMSProvider
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("code = ?", providerCode).First(&provider).Error; err != nil {
+			return err
+		}
+		plain := ""
+		if provider.MetadataTokenCipher != "" {
+			decrypted, err := util.DecryptString(s.encryptionKey, provider.MetadataTokenCipher)
+			if err != nil {
+				return err
+			}
+			plain = decrypted
+		}
+		if strings.TrimSpace(plain) == "" {
+			plain = strings.TrimSpace(fallbackCredential)
+		}
+		updated := upsertCredentialHeader(plain, "Communication", communication)
+		cipherText, err := util.EncryptString(s.encryptionKey, updated)
+		if err != nil {
+			return err
+		}
+		return tx.Model(&provider).Update("metadata_token_cipher", cipherText).Error
+	})
+}
+
+func upsertCredentialHeader(credential, key, value string) string {
+	credential = strings.TrimSpace(credential)
+	if credential != "" && !strings.Contains(credential, ":") {
+		credential = "Token: " + strings.Join(strings.Fields(credential), "")
+	}
+	lines := strings.Split(credential, "\n")
+	updated := make([]string, 0, len(lines)+1)
+	found := false
+	for _, line := range lines {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), key) {
+			if !found {
+				updated = append(updated, key+": "+value)
+				found = true
+			}
+			continue
+		}
+		if strings.TrimSpace(line) != "" {
+			updated = append(updated, strings.TrimSpace(line))
+		}
+	}
+	if !found {
+		updated = append(updated, key+": "+value)
+	}
+	return strings.Join(updated, "\n")
 }
 
 func (s *CatalogService) configureRuntime(provider model.SMSProvider) error {
@@ -405,6 +466,11 @@ func normalizeServiceConfigMetadata(providerCode string, metadata datatypes.JSON
 		return nil, errors.New("simType must be 1 or 2")
 	}
 	values["simType"] = simType
+	if simType == "2" {
+		values["operatorId"] = "5"
+	} else {
+		values["operatorId"] = "2"
+	}
 	raw, err := json.Marshal(values)
 	return datatypes.JSON(raw), err
 }

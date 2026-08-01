@@ -29,12 +29,13 @@ const (
 )
 
 type Client struct {
-	apiKey        string
-	baseURL       string
-	metadataToken string
-	httpClient    *http.Client
-	logger        func(model.SupplierRequestLog)
-	mu            sync.RWMutex
+	apiKey               string
+	baseURL              string
+	metadataToken        string
+	httpClient           *http.Client
+	logger               func(model.SupplierRequestLog)
+	communicationUpdater func(string, string) error
+	mu                   sync.RWMutex
 }
 
 type apiEnvelope struct {
@@ -107,6 +108,7 @@ type activityRule struct {
 type serviceConfigMetadata struct {
 	ValidityType string `json:"validityType"`
 	SIMType      string `json:"simType"`
+	OperatorID   string `json:"operatorId"`
 }
 type loginCredential struct {
 	Token         string
@@ -142,6 +144,13 @@ func (c *Client) ConfigureAdvanced(apiKey, baseURL, metadataToken string) {
 	if metadataToken != "" {
 		c.metadataToken = strings.TrimSpace(metadataToken)
 	}
+}
+
+// SetCommunicationUpdater persists provider-issued Communication rotations.
+func (c *Client) SetCommunicationUpdater(updater func(string, string) error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.communicationUpdater = updater
 }
 
 func (c *Client) ProviderKind() sms.ProviderKind {
@@ -185,8 +194,8 @@ func (c *Client) RequestNumber(ctx context.Context, input sms.RequestNumberInput
 		return nil, sms.NewProviderError("AUTH_ERROR", "68sms api key is not configured")
 	}
 
-	operator := defaultOperatorID(input.PoolID)
 	simType := simTypeFromMetadata(input.Metadata)
+	operator := operatorIDFromMetadata(input.Metadata)
 	var lastErr error
 	for _, validityType := range validityTypes(input.Metadata) {
 		query := url.Values{
@@ -376,7 +385,7 @@ func (c *Client) GetValidityOptions(ctx context.Context, input sms.ValidityOptio
 	query := url.Values{
 		"appId":      {serviceID},
 		"countryId":  {countryID},
-		"operatorId": {defaultOperatorID(input.PoolID)},
+		"operatorId": {defaultOperatorID(input.SIMType)},
 		"simType":    {normalizeSIMType(input.SIMType)},
 		"cardType":   {"1"},
 		"smsType":    {"1"},
@@ -520,11 +529,22 @@ func storeHTTPError(action string, status int, raw json.RawMessage) error {
 	}
 	return fmt.Errorf("68sms %s http %d: %s", action, status, raw)
 }
-func defaultOperatorID(poolID string) string {
-	if strings.TrimSpace(poolID) != "" {
-		return strings.TrimSpace(poolID)
+func defaultOperatorID(simType string) string {
+	if normalizeSIMType(simType) == simPhysical {
+		return "5"
 	}
 	return "2"
+}
+
+func operatorIDFromMetadata(metadata json.RawMessage) string {
+	var parsed serviceConfigMetadata
+	if len(metadata) > 0 && json.Unmarshal(metadata, &parsed) == nil {
+		if operatorID := strings.TrimSpace(parsed.OperatorID); operatorID != "" {
+			return operatorID
+		}
+		return defaultOperatorID(parsed.SIMType)
+	}
+	return defaultOperatorID(simVirtual)
 }
 
 func (c *Client) getStoreWithCredential(ctx context.Context, path string, query url.Values) (json.RawMessage, int, error) {
@@ -621,6 +641,9 @@ func (c *Client) getStore(ctx context.Context, path string, query url.Values, cr
 	if err != nil {
 		c.log(path, query, resp.StatusCode, false, err.Error(), time.Since(start), body)
 		return body, resp.StatusCode, err
+	}
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		c.updateCommunication(firstNonEmpty(resp.Header.Get("Communication"), resp.Trailer.Get("Communication")))
 	}
 	c.log(path, query, resp.StatusCode, resp.StatusCode < 400, "", time.Since(start), body)
 	return body, resp.StatusCode, nil
@@ -726,6 +749,48 @@ func parseLoginCredential(text string) loginCredential {
 	}
 	credential.Token = strings.Join(strings.Fields(credential.Token), "")
 	return credential
+}
+
+func formatLoginCredential(credential loginCredential) string {
+	parts := make([]string, 0, 3)
+	if credential.Token != "" {
+		parts = append(parts, "Token: "+credential.Token)
+	}
+	if credential.Cookie != "" {
+		parts = append(parts, "Cookie: "+credential.Cookie)
+	}
+	if credential.Communication != "" {
+		parts = append(parts, "Communication: "+credential.Communication)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func (c *Client) updateCommunication(value string) {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 1024 || strings.ContainsAny(value, "\r\n") {
+		return
+	}
+
+	c.mu.Lock()
+	credential := parseLoginCredential(c.metadataToken)
+	if credential.Token == "" || credential.Communication == value {
+		c.mu.Unlock()
+		return
+	}
+	credential.Communication = value
+	updatedCredential := formatLoginCredential(credential)
+	c.metadataToken = updatedCredential
+	updater := c.communicationUpdater
+	c.mu.Unlock()
+
+	if updater == nil {
+		return
+	}
+	if err := updater(value, updatedCredential); err != nil {
+		c.log("communication_refresh", nil, 0, false, err.Error(), 0, nil)
+		return
+	}
+	c.log("communication_refresh", nil, http.StatusOK, true, "", 0, nil)
 }
 
 func isWaitingMessage(message string) bool {

@@ -38,6 +38,29 @@ func TestNormalizeServiceConfigMetadata(t *testing.T) {
 			if values["simType"] != test.want {
 				t.Fatalf("simType = %#v, want %q", values["simType"], test.want)
 			}
+			wantOperator := "2"
+			if test.want == "2" {
+				wantOperator = "5"
+			}
+			if values["operatorId"] != wantOperator {
+				t.Fatalf("operatorId = %#v, want %q", values["operatorId"], wantOperator)
+			}
 		})
+	}
+}
+
+func TestUpsertCredentialHeader(t *testing.T) {
+	credential := "Token: token-value\nCookie: session=value\nCommunication: old-value"
+	updated := upsertCredentialHeader(credential, "Communication", "new-value")
+	if updated != "Token: token-value\nCookie: session=value\nCommunication: new-value" {
+		t.Fatalf("upsertCredentialHeader() = %q", updated)
+	}
+	withoutCommunication := upsertCredentialHeader("Token: token-value\nCookie: session=value", "Communication", "new-value")
+	if withoutCommunication != "Token: token-value\nCookie: session=value\nCommunication: new-value" {
+		t.Fatalf("upsertCredentialHeader() append = %q", withoutCommunication)
+	}
+	rawToken := upsertCredentialHeader("token-value", "Communication", "new-value")
+	if rawToken != "Token: token-value\nCommunication: new-value" {
+		t.Fatalf("upsertCredentialHeader() raw token = %q", rawToken)
 	}
 }

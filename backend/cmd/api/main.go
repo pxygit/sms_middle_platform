@@ -43,12 +43,16 @@ func main() {
 	registry.Register(smsbower.New(cfg.SMSBowerAPIKey, cfg.SMSBowerBaseURL, cfg.SMSBowerTimeout, supplierLogs.Record))
 	registry.Register(fivesim.New(cfg.FiveSimAPIKey, cfg.FiveSimBaseURL, cfg.FiveSimTimeout, supplierLogs.Record))
 	registry.Register(lubansms.New(cfg.LubanSMSAPIKey, cfg.LubanSMSBaseURL, cfg.LubanSMSTimeout, supplierLogs.Record))
-	registry.Register(sms68.New(cfg.SMS68APIKey, cfg.SMS68BaseURL, cfg.SMS68MetadataToken, cfg.SMS68Timeout, supplierLogs.Record))
+	sms68Provider := sms68.New(cfg.SMS68APIKey, cfg.SMS68BaseURL, cfg.SMS68MetadataToken, cfg.SMS68Timeout, supplierLogs.Record)
+	registry.Register(sms68Provider)
 	registry.Register(sms62us.New(cfg.SMS62USAPIKey, cfg.SMS62USBaseURL, cfg.SMS62USTimeout, supplierLogs.Record))
 
 	admins := service.NewAdminService(db, cfg)
 	audit := service.NewAuditService(db)
 	catalog := service.NewCatalogService(db, cfg.DataEncryptionKey, registry)
+	sms68Provider.SetCommunicationUpdater(func(communication, fallbackCredential string) error {
+		return catalog.PersistRuntimeCommunication("68sms", communication, fallbackCredential)
+	})
 	if err := catalog.ConfigureRuntimeProviders(); err != nil {
 		log.Fatalf("configure providers: %v", err)
 	}

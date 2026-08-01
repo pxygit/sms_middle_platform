@@ -1107,6 +1107,7 @@ function ServicesPage() {
                 options={(validityOptions.data || []).map((item: ProviderValidityOption) => ({
                   label: validityLabel(item, t),
                   value: item.value,
+                  disabled: item.stock <= 0,
                 }))}
                 optionRender={(option) => {
                   const item = (validityOptions.data || []).find((entry: ProviderValidityOption) => entry.value === option.value);
